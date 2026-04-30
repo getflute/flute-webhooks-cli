@@ -86,4 +86,16 @@ impl ApiClient {
     pub async fn list_event_types(&self) -> Result<ListEventTypesDto, ApiError> {
         self.send(Method::GET, "/v2/webhooks/event-types", None).await
     }
+
+    pub async fn list_delivery_logs(&self, limit: u32) -> Result<ListDeliveryLogsDto, ApiError> {
+        self.send(Method::GET, &format!("/v2/webhooks/delivery-logs?limit={limit}"), None).await
+    }
+
+    pub async fn get_delivery_log(&self, id: &str) -> Result<DeliveryLogDetailDto, ApiError> {
+        self.send(Method::GET, &format!("/v2/webhooks/delivery-logs/{id}"), None).await
+    }
+
+    pub async fn retry_delivery(&self, id: &str) -> Result<serde_json::Value, ApiError> {
+        self.send(Method::POST, &format!("/v2/webhooks/delivery-logs/{id}/retry"), None).await
+    }
 }
