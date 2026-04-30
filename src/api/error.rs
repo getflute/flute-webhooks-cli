@@ -22,6 +22,7 @@ pub(crate) struct AspNetError {
     #[serde(rename = "correlationId")]
     pub correlation_id: Option<String>,
     #[serde(rename = "errorCode")]
+    #[allow(dead_code)]
     pub error_code: Option<String>,
 }
 
