@@ -56,6 +56,39 @@ pub fn load_or_default() -> Config {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Profile {
+    pub name: String,
+    pub api_base_url: String,
+    pub oauth_url: String,
+}
+
+impl Profile {
+    pub fn uat() -> Self {
+        Self {
+            name: "uat".into(),
+            api_base_url: "https://api.uat.arise.risewithaurora.com".into(),
+            oauth_url: "https://oauth.uat.arise.risewithaurora.com/oauth2/token".into(),
+        }
+    }
+
+    pub fn production() -> Self {
+        Self {
+            name: "production".into(),
+            api_base_url: "https://api.arise.risewithaurora.com".into(),
+            oauth_url: "https://oauth.arise.risewithaurora.com/oauth2/token".into(),
+        }
+    }
+
+    pub fn by_name(name: &str) -> Option<Self> {
+        match name {
+            "uat" => Some(Self::uat()),
+            "production" | "prod" => Some(Self::production()),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,5 +129,32 @@ mod tests {
         let c = Config::default();
         assert_eq!(c.default_profile, "uat");
         assert_eq!(c.poll_interval_seconds, 5);
+    }
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+
+    #[test]
+    fn uat_profile_has_uat_hosts() {
+        let p = Profile::uat();
+        assert!(p.api_base_url.contains("api.uat.arise"));
+        assert!(p.oauth_url.contains("oauth.uat.arise"));
+    }
+
+    #[test]
+    fn production_profile_has_prod_hosts() {
+        let p = Profile::production();
+        assert!(!p.api_base_url.contains(".uat."));
+        assert!(!p.oauth_url.contains(".uat."));
+    }
+
+    #[test]
+    fn by_name_resolves_known_profiles() {
+        assert_eq!(Profile::by_name("uat").unwrap().name, "uat");
+        assert_eq!(Profile::by_name("production").unwrap().name, "production");
+        assert_eq!(Profile::by_name("prod").unwrap().name, "production");
+        assert!(Profile::by_name("garbage").is_none());
     }
 }
