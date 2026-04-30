@@ -130,7 +130,10 @@ async fn execute_action(api: &ApiClient, action: AppAction,
             Ok(_) => { let _ = outcome_tx.send(ActionOutcome::Toast("Webhook deleted".into())).await; }
             Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
         },
-        AppAction::OpenDetails(_) => {} // detail fetch deferred — Task 23 wires this up
+        AppAction::OpenDetails(id) => match api.get_delivery_log(&id).await {
+            Ok(d) => { let _ = outcome_tx.send(ActionOutcome::DeliveryDetail(d)).await; }
+            Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
+        },
         AppAction::None => {}
     }
 }

@@ -213,22 +213,80 @@ pub fn render_details_modal(frame: &mut Frame, app: &App, log_id: &str) {
         .style(Style::default().bg(Color::Black));
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    let Some(log) = app.logs.iter().find(|l| l.id == log_id) else {
-        let p = Paragraph::new(Span::styled("Loading details…", Style::default().fg(Color::Yellow)));
+
+    let mut lines: Vec<Line> = Vec::new();
+    let detail = app.delivery_detail.as_ref().filter(|d| d.id == log_id);
+    if detail.is_none() {
+        lines.push(Line::from(Span::styled("Loading details…", Style::default().fg(Color::Yellow))));
+        let p = Paragraph::new(lines).wrap(Wrap { trim: false }).scroll((app.detail_scroll, 0));
         frame.render_widget(p, inner);
         return;
-    };
-    let lines = vec![
-        Line::from(Span::styled(format!("Event: {}", log.event_type), Style::default().fg(Color::Blue))),
-        Line::from(Span::styled(format!("Endpoint: {}", log.endpoint_name), Style::default().fg(Color::White).bold())),
-        Line::from(Span::styled(format!("URL: {}", log.endpoint_url), Style::default().fg(Color::Blue))),
-        Line::from(Span::styled(format!("Status: {:?}  HTTP: {:?}  Duration: {}ms  Attempt: {}",
-            log.status, log.response_status_code, log.duration_ms, log.attempt_number),
-            Style::default().fg(Color::White))),
-        Line::raw(""),
-        Line::from(Span::styled("Press v on a log row to fetch full request/response from the API",
-            Style::default().fg(Color::Green))),
-    ];
+    }
+    let d = detail.unwrap();
+
+    lines.push(Line::from(vec![
+        Span::styled(format!(" {:?} ", d.status),
+            Style::default().fg(Color::Black).bg(match d.status {
+                crate::api::models::WebhookDeliveryLogStatus::Success => Color::Green,
+                crate::api::models::WebhookDeliveryLogStatus::Failure => Color::Red,
+            }).bold()),
+        Span::raw("  "),
+        Span::styled(d.created_on.format("%m/%d/%y %H:%M:%S").to_string(),
+            Style::default().fg(Color::White)),
+        Span::raw("  "),
+        Span::styled(format!("{}ms", d.duration_ms), Style::default().fg(Color::White)),
+        Span::raw("  "),
+        Span::styled(format!("Attempt {}", d.attempt_number), Style::default().fg(Color::Green)),
+    ]));
+    lines.push(Line::raw(""));
+    lines.push(Line::from(Span::styled("━━ Request ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        Style::default().fg(Color::Cyan))));
+    lines.push(Line::from(vec![
+        Span::styled("POST ", Style::default().fg(Color::Green).bold()),
+        Span::styled(d.endpoint_url.clone().unwrap_or_default(), Style::default().fg(Color::Blue)),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("Event: ", Style::default().fg(Color::Green)),
+        Span::styled(d.event_type.clone().unwrap_or_default(), Style::default().fg(Color::Blue)),
+    ]));
+    lines.push(Line::raw(""));
+
+    if let Some(headers) = &d.request_headers {
+        lines.push(Line::from(Span::styled("Headers:", Style::default().fg(Color::White).bold())));
+        let mut keys: Vec<&String> = headers.keys().collect();
+        keys.sort();
+        for k in keys {
+            let v = headers.get(k).cloned().flatten().unwrap_or_default();
+            lines.push(Line::from(Span::styled(format!("  {k}: {v}"), Style::default().fg(Color::Green))));
+        }
+        lines.push(Line::raw(""));
+    }
+    if let Some(body) = &d.request_body {
+        lines.push(Line::from(Span::styled("Payload:", Style::default().fg(Color::White).bold())));
+        for ln in body.lines() {
+            lines.push(Line::from(Span::styled(format!("  {ln}"), Style::default().fg(Color::Green))));
+        }
+        lines.push(Line::raw(""));
+    }
+    lines.push(Line::from(Span::styled("━━ Response ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        Style::default().fg(Color::Cyan))));
+    if let Some(code) = d.response_status_code {
+        lines.push(Line::from(Span::styled(format!("HTTP {code}"), Style::default().fg(Color::White).bold())));
+    } else {
+        lines.push(Line::from(Span::styled("No response received", Style::default().fg(Color::Red))));
+    }
+    if let Some(body) = &d.response_body {
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled("Body:", Style::default().fg(Color::White).bold())));
+        for ln in body.lines() {
+            lines.push(Line::from(Span::styled(format!("  {ln}"), Style::default().fg(Color::Green))));
+        }
+    }
+    if let Some(err) = &d.error_message {
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled(format!("Error: {err}"), Style::default().fg(Color::Red))));
+    }
+
     let para = Paragraph::new(lines).wrap(Wrap { trim: false }).scroll((app.detail_scroll, 0));
     frame.render_widget(para, inner);
 }

@@ -114,6 +114,8 @@ pub struct App {
 
     pub toast_message: Option<String>,
     pub toast_timer: u8,
+
+    pub delivery_detail: Option<crate::api::models::DeliveryLogDetailDto>,
 }
 
 impl App {
@@ -137,6 +139,7 @@ impl App {
             sort_ascending: false,
             toast_message: None,
             toast_timer: 0,
+            delivery_detail: None,
         }
     }
 
@@ -151,6 +154,12 @@ impl App {
             if self.toast_timer == 0 { self.toast_message = None; }
         }
     }
+
+    pub fn set_delivery_detail(&mut self, d: crate::api::models::DeliveryLogDetailDto) {
+        self.delivery_detail = Some(d);
+    }
+
+    pub fn clear_delivery_detail(&mut self) { self.delivery_detail = None; }
 
     pub fn apply_snapshot(&mut self, endpoints: Vec<Endpoint>, logs: Vec<DeliveryLog>, event_types: Vec<EventTypeMeta>) {
         self.endpoints = endpoints;
@@ -414,7 +423,10 @@ impl App {
 
     fn handle_details_key(&mut self, key: KeyEvent) -> AppAction {
         match key.code {
-            KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => { self.modal = ModalState::None; }
+            KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => {
+                self.modal = ModalState::None;
+                self.clear_delivery_detail();
+            }
             KeyCode::Down | KeyCode::Char('j') => self.detail_scroll = self.detail_scroll.saturating_add(2),
             KeyCode::Up | KeyCode::Char('k') => self.detail_scroll = self.detail_scroll.saturating_sub(2),
             KeyCode::PageDown => self.detail_scroll = self.detail_scroll.saturating_add(10),
@@ -430,6 +442,7 @@ pub enum ActionOutcome {
     Toast(String),
     Created { secret: String },
     Error(String),
+    DeliveryDetail(crate::api::models::DeliveryLogDetailDto),
 }
 
 impl App {
@@ -443,6 +456,7 @@ impl App {
                 self.last_error = Some(msg.clone());
                 self.show_toast(format!("Error: {msg}"));
             }
+            ActionOutcome::DeliveryDetail(d) => self.set_delivery_detail(d),
         }
     }
 }
