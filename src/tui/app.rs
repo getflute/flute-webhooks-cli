@@ -389,7 +389,12 @@ impl App {
                 })
             }
             ModalState::EditWebhook(idx) => {
-                let id = self.endpoints[idx].id.clone();
+                let Some(ep) = self.endpoints.get(idx) else {
+                    self.modal = ModalState::None;
+                    self.show_toast("Endpoint was removed; edit cancelled");
+                    return AppAction::None;
+                };
+                let id = ep.id.clone();
                 AppAction::Update(id, crate::api::models::UpdateWebhookEndpointRequest {
                     name, endpoint_url: self.form.url.clone(),
                     status: self.form.status, event_types: selected,
