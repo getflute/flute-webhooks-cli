@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use crate::api::models::{WebhookDeliveryLogStatus, WebhookEndpointStatus};
 use crate::domain::{DeliveryLog, Endpoint, EventTypeMeta};
 
@@ -169,5 +168,183 @@ impl App {
             ModalState::CreateWebhook | ModalState::EditWebhook(_) => crate::poller::CadenceMode::Backoff,
             _ => crate::poller::CadenceMode::Active,
         }
+    }
+}
+
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+
+#[derive(Debug)]
+pub enum AppAction {
+    None,
+    Create(crate::api::models::CreateWebhookEndpointRequest),
+    Update(String, crate::api::models::UpdateWebhookEndpointRequest),
+    Delete(String),
+    OpenDetails(String),
+}
+
+impl App {
+    pub fn handle_key(&mut self, key: KeyEvent) -> AppAction {
+        if key.kind != KeyEventKind::Press { return AppAction::None; }
+        // Ctrl-C always quits
+        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            self.running = false;
+            return AppAction::None;
+        }
+        match self.modal.clone() {
+            ModalState::None => self.handle_main_key(key),
+            ModalState::CreateWebhook | ModalState::EditWebhook(_) => self.handle_form_key(key),
+            ModalState::DeleteWebhook(idx) => self.handle_delete_key(key, idx),
+            ModalState::WebhookCreated(_) => self.handle_created_key(key),
+            ModalState::DeliveryDetails(_) => self.handle_details_key(key),
+        }
+    }
+
+    fn handle_main_key(&mut self, key: KeyEvent) -> AppAction {
+        match key.code {
+            KeyCode::Char('q') => { self.running = false; AppAction::None }
+            KeyCode::Tab | KeyCode::BackTab => {
+                self.screen = match self.screen {
+                    Screen::Endpoints => Screen::DeliveryLogs,
+                    Screen::DeliveryLogs => Screen::Endpoints,
+                };
+                AppAction::None
+            }
+            _ => match self.screen {
+                Screen::Endpoints => self.handle_endpoints_key(key),
+                Screen::DeliveryLogs => self.handle_logs_key(key),
+            }
+        }
+    }
+
+    fn handle_endpoints_key(&mut self, key: KeyEvent) -> AppAction {
+        let n = self.endpoints.len();
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') if n > 0 && self.selected_endpoint > 0 => {
+                self.selected_endpoint -= 1; AppAction::None
+            }
+            KeyCode::Down | KeyCode::Char('j') if n > 0 && self.selected_endpoint + 1 < n => {
+                self.selected_endpoint += 1; AppAction::None
+            }
+            KeyCode::Char('c') => {
+                self.form = FormState::new_create(self.event_types.len());
+                self.modal = ModalState::CreateWebhook;
+                AppAction::None
+            }
+            KeyCode::Char('e') | KeyCode::Enter if n > 0 => {
+                self.form = FormState::new_edit(&self.endpoints[self.selected_endpoint], &self.event_types);
+                self.modal = ModalState::EditWebhook(self.selected_endpoint);
+                AppAction::None
+            }
+            KeyCode::Char('d') if n > 0 => {
+                self.modal = ModalState::DeleteWebhook(self.selected_endpoint);
+                AppAction::None
+            }
+            _ => AppAction::None,
+        }
+    }
+
+    fn handle_logs_key(&mut self, key: KeyEvent) -> AppAction {
+        let filtered = self.filtered_log_indices();
+        let n = filtered.len();
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') if n > 0 && self.selected_log > 0 => {
+                self.selected_log -= 1; AppAction::None
+            }
+            KeyCode::Down | KeyCode::Char('j') if n > 0 && self.selected_log + 1 < n => {
+                self.selected_log += 1; AppAction::None
+            }
+            KeyCode::Enter | KeyCode::Char('v') if n > 0 => {
+                let id = self.logs[filtered[self.selected_log]].id.clone();
+                self.detail_scroll = 0;
+                self.modal = ModalState::DeliveryDetails(id.clone());
+                AppAction::OpenDetails(id)
+            }
+            KeyCode::Char('1') => {
+                self.filter_endpoint = (self.filter_endpoint + 1) % (self.endpoints.len() + 1);
+                self.selected_log = 0; AppAction::None
+            }
+            KeyCode::Char('2') => {
+                self.filter_event = (self.filter_event + 1) % (self.event_types.len() + 1);
+                self.selected_log = 0; AppAction::None
+            }
+            KeyCode::Char('3') => {
+                self.filter_status = (self.filter_status + 1) % 3;
+                self.selected_log = 0; AppAction::None
+            }
+            KeyCode::Char('s') => { self.sort_ascending = !self.sort_ascending; AppAction::None }
+            KeyCode::Char('x') => {
+                self.filter_endpoint = 0; self.filter_event = 0; self.filter_status = 0;
+                self.selected_log = 0; AppAction::None
+            }
+            _ => AppAction::None,
+        }
+    }
+
+    pub fn filtered_log_indices(&self) -> Vec<usize> {
+        let mut out: Vec<usize> = (0..self.logs.len()).filter(|&i| {
+            let log = &self.logs[i];
+            if self.filter_endpoint > 0 {
+                let ep_idx = self.filter_endpoint - 1;
+                if ep_idx >= self.endpoints.len() || self.endpoints[ep_idx].id != log.endpoint_id {
+                    return false;
+                }
+            }
+            if self.filter_event > 0 {
+                let evt_idx = self.filter_event - 1;
+                if evt_idx >= self.event_types.len() || self.event_types[evt_idx].name != log.event_type {
+                    return false;
+                }
+            }
+            match self.filter_status {
+                1 => log.status == WebhookDeliveryLogStatus::Success,
+                2 => log.status == WebhookDeliveryLogStatus::Failure,
+                _ => true,
+            }
+        }).collect();
+        if self.sort_ascending { out.reverse(); }
+        out
+    }
+
+    // Stubs replaced in Task 18:
+    fn handle_form_key(&mut self, _key: KeyEvent) -> AppAction { AppAction::None }
+    fn handle_delete_key(&mut self, _key: KeyEvent, _idx: usize) -> AppAction { AppAction::None }
+    fn handle_created_key(&mut self, _key: KeyEvent) -> AppAction { AppAction::None }
+    fn handle_details_key(&mut self, _key: KeyEvent) -> AppAction { AppAction::None }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+
+    fn key(c: char) -> KeyEvent {
+        KeyEvent { code: KeyCode::Char(c), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::empty() }
+    }
+
+    #[test]
+    fn q_at_top_level_quits() {
+        let mut app = App::new(None);
+        app.handle_key(key('q'));
+        assert!(!app.running);
+    }
+
+    #[test]
+    fn tab_switches_screens() {
+        let mut app = App::new(None);
+        let kp = KeyEvent { code: KeyCode::Tab, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::empty() };
+        app.handle_key(kp);
+        assert_eq!(app.screen, Screen::DeliveryLogs);
+        app.handle_key(kp);
+        assert_eq!(app.screen, Screen::Endpoints);
+    }
+
+    #[test]
+    fn ctrl_c_always_quits_even_inside_form() {
+        let mut app = App::new(None);
+        app.modal = ModalState::CreateWebhook;
+        app.form = FormState::new_create(0);
+        let kp = KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL, kind: KeyEventKind::Press, state: KeyEventState::empty() };
+        app.handle_key(kp);
+        assert!(!app.running);
     }
 }
