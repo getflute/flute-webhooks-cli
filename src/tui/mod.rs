@@ -43,16 +43,15 @@ pub async fn run(profile_name: &str) -> anyhow::Result<()> {
     let (cadence_tx, cadence_rx) = watch::channel(CadenceMode::Active);
     let (events_tx, mut events_rx) = mpsc::channel::<PollerEvent>(8);
     let (action_tx, mut action_rx) = mpsc::channel::<AppAction>(8);
+    let (outcome_tx, mut outcome_rx) = mpsc::channel::<crate::tui::app::ActionOutcome>(8);
 
     let _poller_handle = poller::spawn(api.clone(), cadence_rx, validated.seconds, events_tx);
 
-    // Action executor task: runs Create/Update/Delete/Details requests off the UI thread.
-    // For Task 21, results are intentionally dropped — Task 22 wires action outcomes back
-    // to the App via a separate channel.
     let api_for_actions = api.clone();
+    let outcome_tx_for_executor = outcome_tx.clone();
     tokio::spawn(async move {
         while let Some(action) = action_rx.recv().await {
-            execute_action(&api_for_actions, action).await;
+            execute_action(&api_for_actions, action, &outcome_tx_for_executor).await;
         }
     });
 
@@ -65,7 +64,7 @@ pub async fn run(profile_name: &str) -> anyhow::Result<()> {
 
     let mut app = App::new(validated.warning);
 
-    let res = event_loop(&mut terminal, &mut app, &mut events_rx, &cadence_tx, &action_tx).await;
+    let res = event_loop(&mut terminal, &mut app, &mut events_rx, &mut outcome_rx, &cadence_tx, &action_tx).await;
 
     disable_raw_mode().ok();
     execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
@@ -77,6 +76,7 @@ async fn event_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
     events_rx: &mut mpsc::Receiver<PollerEvent>,
+    outcome_rx: &mut mpsc::Receiver<crate::tui::app::ActionOutcome>,
     cadence_tx: &watch::Sender<CadenceMode>,
     action_tx: &mpsc::Sender<AppAction>,
 ) -> anyhow::Result<()> {
@@ -84,13 +84,14 @@ async fn event_loop(
     while app.running {
         terminal.draw(|f| ui::render(f, app))?;
 
-        // Drain any poller events without blocking
         while let Ok(ev) = events_rx.try_recv() {
             match ev {
                 PollerEvent::Snapshot(s) => app.apply_snapshot(s.endpoints, s.logs, s.event_types),
-                PollerEvent::Error(e) => app.last_error = Some(e),
+                // Surface poller errors to the user as a toast (was: silently set last_error)
+                PollerEvent::Error(e) => app.show_toast(format!("Poll error: {e}")),
             }
         }
+        while let Ok(o) = outcome_rx.try_recv() { app.apply_outcome(o); }
 
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
@@ -105,22 +106,31 @@ async fn event_loop(
         app.tick_toast();
 
         let mode = app.cadence_mode();
-        if mode != last_mode {
-            let _ = cadence_tx.send(mode);
-            last_mode = mode;
-        }
+        if mode != last_mode { let _ = cadence_tx.send(mode); last_mode = mode; }
     }
     Ok(())
 }
 
-async fn execute_action(api: &ApiClient, action: AppAction) {
-    // Task 22 will route results back via outcome_tx so the UI can render success/error feedback.
-    // For now, fire-and-forget — the next poll cycle will refresh state.
+async fn execute_action(api: &ApiClient, action: AppAction,
+    outcome_tx: &mpsc::Sender<crate::tui::app::ActionOutcome>) {
+    use crate::tui::app::ActionOutcome;
     match action {
-        AppAction::Create(req) => { let _ = api.create_endpoint(&req).await; }
-        AppAction::Update(id, req) => { let _ = api.update_endpoint(&id, &req).await; }
-        AppAction::Delete(id) => { let _ = api.delete_endpoint(&id).await; }
-        AppAction::OpenDetails(id) => { let _ = api.get_delivery_log(&id).await; }
+        AppAction::Create(req) => match api.create_endpoint(&req).await {
+            Ok(resp) => {
+                let secret = resp.secret.unwrap_or_else(|| "(none returned)".into());
+                let _ = outcome_tx.send(ActionOutcome::Created { secret }).await;
+            }
+            Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
+        },
+        AppAction::Update(id, req) => match api.update_endpoint(&id, &req).await {
+            Ok(_) => { let _ = outcome_tx.send(ActionOutcome::Toast("Webhook updated".into())).await; }
+            Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
+        },
+        AppAction::Delete(id) => match api.delete_endpoint(&id).await {
+            Ok(_) => { let _ = outcome_tx.send(ActionOutcome::Toast("Webhook deleted".into())).await; }
+            Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
+        },
+        AppAction::OpenDetails(_) => {} // detail fetch deferred — Task 23 wires this up
         AppAction::None => {}
     }
 }

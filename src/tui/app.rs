@@ -425,6 +425,28 @@ impl App {
     }
 }
 
+#[derive(Debug)]
+pub enum ActionOutcome {
+    Toast(String),
+    Created { secret: String },
+    Error(String),
+}
+
+impl App {
+    pub fn apply_outcome(&mut self, outcome: ActionOutcome) {
+        match outcome {
+            ActionOutcome::Toast(msg) => self.show_toast(msg),
+            ActionOutcome::Created { secret } => {
+                self.modal = ModalState::WebhookCreated(secret);
+            }
+            ActionOutcome::Error(msg) => {
+                self.last_error = Some(msg.clone());
+                self.show_toast(format!("Error: {msg}"));
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
