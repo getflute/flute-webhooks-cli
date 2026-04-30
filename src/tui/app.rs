@@ -305,11 +305,124 @@ impl App {
         out
     }
 
-    // Stubs replaced in Task 18:
-    fn handle_form_key(&mut self, _key: KeyEvent) -> AppAction { AppAction::None }
-    fn handle_delete_key(&mut self, _key: KeyEvent, _idx: usize) -> AppAction { AppAction::None }
-    fn handle_created_key(&mut self, _key: KeyEvent) -> AppAction { AppAction::None }
-    fn handle_details_key(&mut self, _key: KeyEvent) -> AppAction { AppAction::None }
+    fn handle_form_key(&mut self, key: KeyEvent) -> AppAction {
+        let n = self.event_types.len();
+        match key.code {
+            KeyCode::Esc => { self.modal = ModalState::None; return AppAction::None; }
+            KeyCode::Tab | KeyCode::Down => { self.form.next_field(n); return AppAction::None; }
+            KeyCode::BackTab | KeyCode::Up => { self.form.prev_field(n); return AppAction::None; }
+            KeyCode::PageDown => { self.form.scroll = self.form.scroll.saturating_add(5); return AppAction::None; }
+            KeyCode::PageUp => { self.form.scroll = self.form.scroll.saturating_sub(5); return AppAction::None; }
+            KeyCode::Enter => return self.activate_form_field(),
+            KeyCode::Backspace => match self.form.active_field {
+                FormField::Url => { self.form.url.pop(); return AppAction::None; }
+                FormField::Name => { self.form.name.pop(); return AppAction::None; }
+                _ => return AppAction::None,
+            },
+            KeyCode::Char(' ') => match self.form.active_field {
+                FormField::Url => self.form.url.push(' '),
+                FormField::Name => self.form.name.push(' '),
+                _ => return self.activate_form_field(),
+            },
+            KeyCode::Char(c) => match self.form.active_field {
+                FormField::Url => self.form.url.push(c),
+                FormField::Name => self.form.name.push(c),
+                _ => {}
+            },
+            _ => {}
+        }
+        AppAction::None
+    }
+
+    fn activate_form_field(&mut self) -> AppAction {
+        match self.form.active_field.clone() {
+            FormField::Cancel => { self.modal = ModalState::None; AppAction::None }
+            FormField::Submit => self.submit_form(),
+            FormField::CheckAll => { self.form.events.iter_mut().for_each(|e| *e = true); AppAction::None }
+            FormField::UncheckAll => { self.form.events.iter_mut().for_each(|e| *e = false); AppAction::None }
+            FormField::Event(i) => {
+                if let Some(slot) = self.form.events.get_mut(i) { *slot = !*slot; }
+                AppAction::None
+            }
+            FormField::Status => {
+                self.form.status = match self.form.status {
+                    WebhookEndpointStatus::Active => WebhookEndpointStatus::Inactive,
+                    WebhookEndpointStatus::Inactive => WebhookEndpointStatus::Active,
+                };
+                AppAction::None
+            }
+            _ => AppAction::None,
+        }
+    }
+
+    fn submit_form(&mut self) -> AppAction {
+        let selected: Vec<String> = self.event_types.iter().enumerate()
+            .filter(|(i, _)| self.form.events.get(*i).copied().unwrap_or(false))
+            .map(|(_, et)| et.name.clone())
+            .collect();
+        if self.form.url.trim().is_empty() {
+            self.show_toast("Endpoint URL is required");
+            return AppAction::None;
+        }
+        if selected.is_empty() {
+            self.show_toast("Select at least one event type");
+            return AppAction::None;
+        }
+        let name = if self.form.name.trim().is_empty() {
+            "Untitled Webhook".to_string()
+        } else {
+            self.form.name.clone()
+        };
+        match self.modal.clone() {
+            ModalState::CreateWebhook => {
+                AppAction::Create(crate::api::models::CreateWebhookEndpointRequest {
+                    name, endpoint_url: self.form.url.clone(), event_types: selected,
+                })
+            }
+            ModalState::EditWebhook(idx) => {
+                let id = self.endpoints[idx].id.clone();
+                AppAction::Update(id, crate::api::models::UpdateWebhookEndpointRequest {
+                    name, endpoint_url: self.form.url.clone(),
+                    status: self.form.status, event_types: selected,
+                })
+            }
+            _ => AppAction::None,
+        }
+    }
+
+    fn handle_delete_key(&mut self, key: KeyEvent, idx: usize) -> AppAction {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('n') => { self.modal = ModalState::None; AppAction::None }
+            KeyCode::Enter | KeyCode::Char('y') => {
+                if let Some(ep) = self.endpoints.get(idx) {
+                    let id = ep.id.clone();
+                    self.modal = ModalState::None;
+                    return AppAction::Delete(id);
+                }
+                AppAction::None
+            }
+            _ => AppAction::None,
+        }
+    }
+
+    fn handle_created_key(&mut self, key: KeyEvent) -> AppAction {
+        if matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
+            self.modal = ModalState::None;
+        }
+        AppAction::None
+    }
+
+    fn handle_details_key(&mut self, key: KeyEvent) -> AppAction {
+        match key.code {
+            KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => { self.modal = ModalState::None; }
+            KeyCode::Down | KeyCode::Char('j') => self.detail_scroll = self.detail_scroll.saturating_add(2),
+            KeyCode::Up | KeyCode::Char('k') => self.detail_scroll = self.detail_scroll.saturating_sub(2),
+            KeyCode::PageDown => self.detail_scroll = self.detail_scroll.saturating_add(10),
+            KeyCode::PageUp => self.detail_scroll = self.detail_scroll.saturating_sub(10),
+            _ => {}
+        }
+        AppAction::None
+    }
 }
 
 #[cfg(test)]
@@ -346,5 +459,58 @@ mod tests {
         let kp = KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL, kind: KeyEventKind::Press, state: KeyEventState::empty() };
         app.handle_key(kp);
         assert!(!app.running);
+    }
+
+    #[test]
+    fn typing_q_in_url_field_appends_q_and_does_not_quit() {
+        let mut app = App::new(None);
+        app.modal = ModalState::CreateWebhook;
+        app.form = FormState::new_create(0);
+        // FormField::Url is the default starting field
+        app.handle_key(key('q'));
+        app.handle_key(key('a'));
+        assert_eq!(app.form.url, "qa");
+        assert!(app.running, "q in URL field must not quit the app");
+    }
+
+    #[test]
+    fn typing_q_c_d_e_in_name_field_are_all_literal() {
+        let mut app = App::new(None);
+        app.modal = ModalState::CreateWebhook;
+        app.form = FormState::new_create(0);
+        app.form.active_field = FormField::Name;
+        for c in ['q', 'c', 'd', 'e'] { app.handle_key(key(c)); }
+        assert_eq!(app.form.name, "qcde");
+        assert!(app.running);
+    }
+
+    #[test]
+    fn esc_in_form_closes_modal() {
+        let mut app = App::new(None);
+        app.modal = ModalState::CreateWebhook;
+        app.form = FormState::new_create(0);
+        let kp = KeyEvent { code: KeyCode::Esc, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        app.handle_key(kp);
+        assert_eq!(app.modal, ModalState::None);
+    }
+
+    #[test]
+    fn pgdown_in_form_scrolls_event_list() {
+        let mut app = App::new(None);
+        app.modal = ModalState::CreateWebhook;
+        app.form = FormState::new_create(35);
+        let kp = KeyEvent { code: KeyCode::PageDown, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        app.handle_key(kp);
+        app.handle_key(kp);
+        assert_eq!(app.form.scroll, 10);
+    }
+
+    #[test]
+    fn cadence_mode_is_backoff_when_form_open() {
+        let mut app = App::new(None);
+        app.modal = ModalState::CreateWebhook;
+        assert_eq!(app.cadence_mode(), crate::poller::CadenceMode::Backoff);
+        app.modal = ModalState::None;
+        assert_eq!(app.cadence_mode(), crate::poller::CadenceMode::Active);
     }
 }
