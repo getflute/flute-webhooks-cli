@@ -56,6 +56,7 @@ pub async fn run(profile_name: &str) -> anyhow::Result<()> {
         }
     });
 
+    install_panic_hook();
     enable_raw_mode().context("enable_raw_mode")?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen).context("EnterAlternateScreen")?;
@@ -95,7 +96,9 @@ async fn event_loop(
             if let Event::Key(key) = event::read()? {
                 let action = app.handle_key(key);
                 if !matches!(action, AppAction::None) {
-                    let _ = action_tx.send(action).await;
+                    if let Err(tokio::sync::mpsc::error::TrySendError::Full(_)) = action_tx.try_send(action) {
+                        app.show_toast("Busy — try again in a moment");
+                    }
                 }
             }
         }
@@ -120,4 +123,17 @@ async fn execute_action(api: &ApiClient, action: AppAction) {
         AppAction::OpenDetails(id) => { let _ = api.get_delivery_log(&id).await; }
         AppAction::None => {}
     }
+}
+
+fn install_panic_hook() {
+    use std::sync::Once;
+    static HOOK_INSTALLED: Once = Once::new();
+    HOOK_INSTALLED.call_once(|| {
+        let original = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let _ = disable_raw_mode();
+            let _ = execute!(io::stdout(), LeaveAlternateScreen);
+            original(info);
+        }));
+    });
 }
