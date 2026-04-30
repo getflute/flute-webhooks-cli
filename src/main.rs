@@ -1,3 +1,3 @@
-fn main() {
-    println!("Hello, world!");
+fn main() -> anyhow::Result<()> {
+    flute_webhook::run()
 }

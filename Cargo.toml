@@ -3,4 +3,34 @@ name = "flute-webhooks"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "flute-webhook"
+path = "src/main.rs"
+
+[lib]
+name = "flute_webhook"
+path = "src/lib.rs"
+
 [dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "signal"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+keyring = "3"
+toml = "0.8"
+dirs = "5"
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+
+[dev-dependencies]
+wiremock = "0.6"
+tempfile = "3"
+pretty_assertions = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "test-util"] }
