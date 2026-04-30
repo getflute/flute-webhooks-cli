@@ -45,11 +45,12 @@ async fn auth_login(profile: &str) -> anyhow::Result<()> {
     stdin.lock().read_line(&mut id)?;
     let id = id.trim().to_string();
 
-    print!("client_secret for [{profile}]: ");
-    stdout.flush()?;
-    let mut secret = String::new();
-    stdin.lock().read_line(&mut secret)?;
+    let secret = rpassword::prompt_password(format!("client_secret for [{profile}]: "))?;
     let secret = secret.trim().to_string();
+
+    if id.is_empty() || secret.is_empty() {
+        anyhow::bail!("client_id and client_secret are both required");
+    }
 
     auth::keychain::store_client_credentials(profile, &id, &secret)?;
     println!("Stored credentials for profile [{profile}] in OS keychain.");
