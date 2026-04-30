@@ -25,6 +25,7 @@ toml = "0.8"
 dirs = "5"
 thiserror = "2"
 anyhow = "1"
+async-trait = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
