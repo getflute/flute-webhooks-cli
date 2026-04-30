@@ -34,15 +34,23 @@ pub fn render(frame: &mut Frame, app: &App) {
     }
 
     if let Some(msg) = &app.toast_message { render_toast(frame, msg); }
-    if let Some(w) = &app.poll_warning { render_poll_warning(frame, w); }
 }
 
 fn render_tab_bar(frame: &mut Frame, app: &App, area: Rect) {
-    let titles = vec![" Endpoints ", " Delivery Logs "];
+    let titles = [" Endpoints ", " Delivery Logs "];
     let selected = match app.screen { Screen::Endpoints => 0, Screen::DeliveryLogs => 1 };
-    let tabs = Tabs::new(titles)
+    let title = match &app.poll_warning {
+        Some(w) => format!(" Flute Webhook Dashboard  ⚠ {w} "),
+        None => " Flute Webhook Dashboard ".to_string(),
+    };
+    let title_style = if app.poll_warning.is_some() {
+        Style::default().fg(Color::Yellow).bold()
+    } else {
+        Style::default().fg(Color::Cyan).bold()
+    };
+    let tabs = Tabs::new(titles.to_vec())
         .block(Block::default().borders(Borders::ALL)
-            .title(" Flute Webhook Dashboard ").title_style(Style::default().fg(Color::Cyan).bold()))
+            .title(title).title_style(title_style))
         .select(selected)
         .style(Style::default().fg(Color::Green))
         .highlight_style(Style::default().fg(Color::Black).bg(Color::Green).bold());
@@ -78,7 +86,13 @@ fn render_endpoints(frame: &mut Frame, app: &App, area: Rect) {
             Cell::from(ep.name.clone()),
             Cell::from(Span::styled(ep.endpoint_url.clone(), Style::default().fg(Color::Blue))),
             Cell::from(count),
-            Cell::from(Span::styled(format!("{:?}", ep.status), status_style)),
+            Cell::from(Span::styled(
+                match ep.status {
+                    WebhookEndpointStatus::Active => "Active",
+                    WebhookEndpointStatus::Inactive => "Inactive",
+                },
+                status_style,
+            )),
             Cell::from("[e]dit [d]el"),
         ]);
         if i == app.selected_endpoint {
@@ -178,23 +192,17 @@ fn render_help_bar(frame: &mut Frame, app: &App, area: Rect) {
 
 fn render_toast(frame: &mut Frame, msg: &str) {
     let area = frame.area();
-    let width = (msg.len() as u16 + 4).min(area.width);
+    let width = u16::try_from(msg.len()).unwrap_or(u16::MAX).saturating_add(4).min(area.width);
     let x = area.width.saturating_sub(width) / 2;
-    let toast_area = Rect::new(x, area.height.saturating_sub(3), width, 3);
+    // Anchor above the help bar (bottom row) so the toast doesn't cover key hints.
+    let y = area.height.saturating_sub(4);
+    let toast_area = Rect::new(x, y, width, 3);
     frame.render_widget(ratatui::widgets::Clear, toast_area);
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(msg, Style::default().fg(Color::White).bold())))
             .alignment(Alignment::Center)
             .block(Block::default().borders(Borders::ALL).style(Style::default().bg(Color::Black))),
         toast_area,
-    );
-}
-
-fn render_poll_warning(frame: &mut Frame, msg: &str) {
-    let area = frame.area();
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(format!("⚠ {msg}"), Style::default().fg(Color::Yellow)))),
-        Rect::new(0, area.height.saturating_sub(2), area.width, 1),
     );
 }
 
