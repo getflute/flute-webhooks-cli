@@ -56,7 +56,7 @@ pub fn load_or_default() -> Config {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Profile {
     pub name: String,
     pub api_base_url: String,
@@ -139,15 +139,15 @@ mod profile_tests {
     #[test]
     fn uat_profile_has_uat_hosts() {
         let p = Profile::uat();
-        assert!(p.api_base_url.contains("api.uat.arise"));
-        assert!(p.oauth_url.contains("oauth.uat.arise"));
+        assert_eq!(p.api_base_url, "https://api.uat.arise.risewithaurora.com");
+        assert_eq!(p.oauth_url, "https://oauth.uat.arise.risewithaurora.com/oauth2/token");
     }
 
     #[test]
     fn production_profile_has_prod_hosts() {
         let p = Profile::production();
-        assert!(!p.api_base_url.contains(".uat."));
-        assert!(!p.oauth_url.contains(".uat."));
+        assert_eq!(p.api_base_url, "https://api.arise.risewithaurora.com");
+        assert_eq!(p.oauth_url, "https://oauth.arise.risewithaurora.com/oauth2/token");
     }
 
     #[test]
