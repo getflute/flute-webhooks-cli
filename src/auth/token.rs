@@ -39,6 +39,36 @@ impl TokenStore {
     }
 }
 
+pub struct OAuth2Fetcher {
+    pub oauth_url: String,
+    pub client_id: String,
+    pub client_secret: String,
+    pub http: reqwest::Client,
+}
+
+#[derive(serde::Deserialize)]
+struct TokenResp {
+    access_token: String,
+    expires_in: u64,
+}
+
+#[async_trait::async_trait]
+impl Fetcher for OAuth2Fetcher {
+    async fn fetch(&self) -> anyhow::Result<(String, Duration)> {
+        let resp: TokenResp = self.http
+            .post(&self.oauth_url)
+            .form(&[
+                ("grant_type", "client_credentials"),
+                ("client_id", &self.client_id),
+                ("client_secret", &self.client_secret),
+            ])
+            .send().await?
+            .error_for_status()?
+            .json().await?;
+        Ok((resp.access_token, Duration::from_secs(resp.expires_in)))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -73,5 +103,28 @@ mod tests {
         assert_eq!(store.bearer().await.unwrap(), "token-0");
         // 30s ttl is below the 60s safety margin, so the next call refreshes
         assert_eq!(store.bearer().await.unwrap(), "token-1");
+    }
+
+    #[tokio::test]
+    async fn oauth2_fetcher_parses_token_response() {
+        use wiremock::{matchers::method, MockServer, Mock, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "abc.def.ghi",
+                "expires_in": 3600,
+                "token_type": "Bearer"
+            })))
+            .mount(&server).await;
+
+        let fetcher = OAuth2Fetcher {
+            oauth_url: format!("{}/oauth2/token", server.uri()),
+            client_id: "id".into(),
+            client_secret: "secret".into(),
+            http: reqwest::Client::new(),
+        };
+        let (bearer, ttl) = fetcher.fetch().await.unwrap();
+        assert_eq!(bearer, "abc.def.ghi");
+        assert_eq!(ttl, Duration::from_secs(3600));
     }
 }
