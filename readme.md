@@ -1,0 +1,147 @@
+# flute-webhook
+
+Interactive terminal UI for managing Flute webhook endpoints and watching delivery logs against the Flute REST API. Built in Rust with [ratatui](https://ratatui.rs).
+
+![status](https://img.shields.io/badge/status-v0.1.0-blue)
+
+## What it does
+
+- **Manage endpoints** — create, edit, delete, and inspect webhook endpoints from a keyboard-driven UI.
+- **Watch deliveries** — poll the live API in the background and stream delivery logs into a filterable table.
+- **Per-endpoint trigger counts** — the Endpoints view shows how many times each webhook fired in the most recent log window.
+- **Adaptive polling** — 5 s by default, configurable 5–60 s, automatically backs off to 20 s while you're editing a form.
+- **Errors with correlation IDs** — failed API calls show a sticky banner with the full server error, including the correlation ID, until you dismiss it.
+
+## Requirements
+
+- **Rust 1.85+** (edition 2024). Install with [rustup](https://rustup.rs/).
+- **macOS, Linux, or Windows** — uses the OS keychain (Keychain on macOS, Secret Service on Linux, Credential Manager on Windows).
+- A **Flute API client_id and client_secret** for the environment you want to use (UAT or production).
+
+## Build
+
+```bash
+git clone <this-repo>
+cd flute-webhooks
+cargo build --release
+# Binary lands at target/release/flute-webhook
+```
+
+For development, `cargo build` (debug profile) is faster and works the same way.
+
+## First run
+
+### 1. Authenticate
+
+```bash
+cargo run -- auth login
+```
+
+You'll be prompted for `client_id` and `client_secret`. The secret prompt is hidden (no echo). Credentials are stored in your OS keychain — never in plaintext on disk.
+
+By default this stores credentials for the **uat** profile. To set up production:
+
+```bash
+cargo run -- --profile production auth login
+```
+
+### 2. Verify
+
+```bash
+cargo run -- auth token
+```
+
+Prints the current bearer JWT (useful for `curl` smoke tests). If credentials aren't stored, you'll get an actionable error pointing you back to `auth login`.
+
+### 3. Launch the TUI
+
+```bash
+cargo run
+# or
+cargo run -- tui
+# or against production
+cargo run -- --profile production tui
+```
+
+## Key bindings
+
+| Context | Keys |
+|---|---|
+| **Top level** | `Tab` switch tabs · `q` quit · `Ctrl-C` quit anywhere |
+| **Endpoints tab** | `↑↓`/`jk` navigate · `c` create · `e`/`Enter` edit · `d` delete |
+| **Delivery Logs tab** | `↑↓`/`jk` navigate · `v`/`Enter` view details · `1` cycle endpoint filter · `2` cycle event-type filter · `3` cycle status filter · `s` toggle sort · `x` clear filters |
+| **Form modal (create/edit)** | `Tab`/`↑↓` move between fields · `Space`/`Enter` toggle controls · `PgUp`/`PgDn` scroll the event list · `Esc` cancel |
+| **Delete confirm** | `y`/`Enter` delete · `n`/`Esc` cancel |
+| **Details modal** | `↑↓`/`jk` scroll · `PgUp`/`PgDn` page · `Esc`/`Enter`/`q` close |
+| **Error banner** | `Esc` dismiss (when no modal is open) |
+
+While typing in a text field (URL or Name), single-character keys like `q`, `c`, `d`, `e` are treated as literal characters — they will not trigger the corresponding TUI commands.
+
+## Configuration
+
+Optional `~/.flute/config.toml`:
+
+```toml
+default_profile = "uat"          # uat | production
+poll_interval_seconds = 5        # 5–60; out of range falls back to 5 with a warning
+```
+
+If `poll_interval_seconds` is outside `5..=60`, the TUI shows a yellow warning in the dashboard title and uses the default of 5 seconds.
+
+### Environment variables
+
+| Variable | Purpose |
+|---|---|
+| `FLUTE_PROFILE` | Default profile (overridden by `--profile`) |
+| `FLUTE_CLIENT_ID` | Skips keychain lookup — used for CI |
+| `FLUTE_CLIENT_SECRET` | Same — both must be set together |
+| `RUST_LOG` | Tracing filter, e.g. `RUST_LOG=flute_webhook=debug` |
+
+Logs go to stderr; stdout is reserved for tool output (so it's safe to pipe).
+
+## Profiles
+
+| Profile | API base | OAuth URL |
+|---|---|---|
+| `uat` (default) | `https://api.uat.arise.risewithaurora.com` | `https://oauth.uat.arise.risewithaurora.com/oauth2/token` |
+| `production` (alias `prod`) | `https://api.arise.risewithaurora.com` | `https://oauth.arise.risewithaurora.com/oauth2/token` |
+
+Use `--profile` (global flag, accepted before or after the subcommand). Active profile is shown in the dashboard title.
+
+## Development
+
+```bash
+cargo test       # 37 tests across lib + integration
+cargo clippy
+cargo fmt
+```
+
+Project layout:
+
+```
+src/
+├── api/        REST client, DTOs, error types
+├── auth/       Keychain wrapper, OAuth2 token cache
+├── config.rs   Config + Profile + polling validator
+├── domain.rs   TUI-facing domain types (Endpoint, DeliveryLog)
+├── poller.rs   Background tokio task with adaptive cadence
+├── cli.rs      clap subcommands
+├── lib.rs      Entry point: tracing, runtime, dispatch
+└── tui/        Ratatui App state, key handling, render, modals
+```
+
+Implementation plan: `docs/superpowers/plans/2026-04-30-flute-webhooks-tui.md`.
+
+## Troubleshooting
+
+**`no credentials for [uat]`** — run `cargo run -- auth login`.
+
+**Terminal looks broken after a crash** — the panic hook should restore it automatically; if it didn't, run `reset` or `stty sane`.
+
+**Errors flash by too fast** — they don't anymore. Errors stick in a red banner above the help bar until you press `Esc` (on the main screen, with no modal open).
+
+**`Busy — try again in a moment` toast** — the action queue is briefly saturated by an in-flight API call. The next press will go through.
+
+## License
+
+MIT.
