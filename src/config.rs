@@ -67,7 +67,11 @@ impl Profile {
     pub fn uat() -> Self {
         Self {
             name: "uat".into(),
-            api_base_url: "https://api.uat.arise.risewithaurora.com".into(),
+            // The ISV BFF is served under /isv-api on both UAT and production —
+            // the swagger UI lives at /isv-api/swagger/v2/swagger.json. Without
+            // this prefix, requests reach a different routing layer that
+            // returns a 500 with "ArgumentNullException: uriString".
+            api_base_url: "https://api.uat.arise.risewithaurora.com/isv-api".into(),
             oauth_url: "https://oauth.uat.arise.risewithaurora.com/oauth2/token".into(),
         }
     }
@@ -75,7 +79,7 @@ impl Profile {
     pub fn production() -> Self {
         Self {
             name: "production".into(),
-            api_base_url: "https://api.arise.risewithaurora.com".into(),
+            api_base_url: "https://api.arise.risewithaurora.com/isv-api".into(),
             oauth_url: "https://oauth.arise.risewithaurora.com/oauth2/token".into(),
         }
     }
@@ -139,15 +143,26 @@ mod profile_tests {
     #[test]
     fn uat_profile_has_uat_hosts() {
         let p = Profile::uat();
-        assert_eq!(p.api_base_url, "https://api.uat.arise.risewithaurora.com");
+        assert_eq!(p.api_base_url, "https://api.uat.arise.risewithaurora.com/isv-api");
         assert_eq!(p.oauth_url, "https://oauth.uat.arise.risewithaurora.com/oauth2/token");
     }
 
     #[test]
     fn production_profile_has_prod_hosts() {
         let p = Profile::production();
-        assert_eq!(p.api_base_url, "https://api.arise.risewithaurora.com");
+        assert_eq!(p.api_base_url, "https://api.arise.risewithaurora.com/isv-api");
         assert_eq!(p.oauth_url, "https://oauth.arise.risewithaurora.com/oauth2/token");
+    }
+
+    #[test]
+    fn api_base_urls_use_isv_api_prefix() {
+        // Routing belt-and-braces: both profiles must include /isv-api so
+        // ApiClient calls to /v2/webhooks/* land on the ISV BFF.
+        for p in [Profile::uat(), Profile::production()] {
+            assert!(p.api_base_url.ends_with("/isv-api"),
+                "profile {} api_base_url must end in /isv-api: got {}",
+                p.name, p.api_base_url);
+        }
     }
 
     #[test]
