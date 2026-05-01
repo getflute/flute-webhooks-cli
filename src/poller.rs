@@ -6,8 +6,10 @@ use crate::api::{ApiClient, ApiError};
 use crate::config::POLL_BACKOFF_SECS;
 use crate::domain::{aggregate_counts, DeliveryLog, Endpoint, EventTypeMeta};
 
-/// Hard cap on backoff sleep so a long outage doesn't leave the user waiting hours.
-const MAX_BACKOFF_SECS: u64 = 300; // 5 minutes
+/// Hard cap on backoff sleep so a long outage doesn't leave the user waiting too long.
+/// The effective cap is max(MAX_BACKOFF_SECS, configured base interval) — a user with a
+/// 60 s base poll interval still polls at 60 s under error, never faster.
+const MAX_BACKOFF_SECS: u64 = 30;
 /// Cap on the doubling exponent so a u64 overflow can't happen and the schedule
 /// reaches the cap predictably (2^6 = 64x base).
 const BACKOFF_EXPONENT_CAP: u32 = 6;
@@ -55,13 +57,15 @@ fn is_backoff_eligible(err: &ApiError) -> bool {
 }
 
 /// Compute the next sleep duration given the base interval and a count of
-/// consecutive failures. Doubles per failure, capped at [`MAX_BACKOFF_SECS`].
+/// consecutive failures. Doubles per failure, capped at max(MAX_BACKOFF_SECS,
+/// base.as_secs()) so a slower configured base never gets sped up under error.
 fn backoff_seconds(base: Duration, consecutive_failures: u32) -> u64 {
     if consecutive_failures == 0 { return base.as_secs(); }
     let exp = consecutive_failures.min(BACKOFF_EXPONENT_CAP);
+    let cap = MAX_BACKOFF_SECS.max(base.as_secs());
     base.as_secs()
         .saturating_mul(2_u64.pow(exp))
-        .min(MAX_BACKOFF_SECS)
+        .min(cap)
 }
 
 struct PollError {
@@ -200,22 +204,25 @@ mod tests {
 
     #[test]
     fn backoff_seconds_doubles_then_caps() {
+        // Default 5 s base reaches the 30 s cap on the third consecutive failure.
         let base = Duration::from_secs(5);
         assert_eq!(backoff_seconds(base, 0), 5);   // no failures: base interval
         assert_eq!(backoff_seconds(base, 1), 10);  // 5 * 2
         assert_eq!(backoff_seconds(base, 2), 20);  // 5 * 4
-        assert_eq!(backoff_seconds(base, 3), 40);
-        assert_eq!(backoff_seconds(base, 4), 80);
-        assert_eq!(backoff_seconds(base, 5), 160);
-        assert_eq!(backoff_seconds(base, 6), MAX_BACKOFF_SECS); // 5 * 64 = 320, capped at 300
+        assert_eq!(backoff_seconds(base, 3), MAX_BACKOFF_SECS); // 5 * 8 = 40, capped at 30
+        assert_eq!(backoff_seconds(base, 4), MAX_BACKOFF_SECS);
         assert_eq!(backoff_seconds(base, 100), MAX_BACKOFF_SECS); // saturates
     }
 
     #[test]
-    fn backoff_seconds_respects_larger_base_interval() {
-        // If user configured 60 s, even one failure should be 120 s — but cap at MAX.
+    fn backoff_never_polls_faster_than_configured_base() {
+        // If user configured 60 s base, the cap floor rises to 60 s — the doubled
+        // value (120 s) gets clamped back down to the cap, which equals the base.
+        // Net effect: large base intervals get no backoff growth beyond themselves,
+        // which is fine because they're already conservative.
         let base = Duration::from_secs(60);
-        assert_eq!(backoff_seconds(base, 1), 120);
-        assert_eq!(backoff_seconds(base, 3), MAX_BACKOFF_SECS); // 60 * 8 = 480, capped
+        assert_eq!(backoff_seconds(base, 0), 60);
+        assert_eq!(backoff_seconds(base, 1), 60);
+        assert_eq!(backoff_seconds(base, 5), 60);
     }
 }
