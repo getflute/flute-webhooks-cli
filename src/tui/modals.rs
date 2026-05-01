@@ -82,7 +82,10 @@ fn render_form_modal(frame: &mut Frame, app: &App, title: &str, subtitle: &str, 
     // Buttons
     push_buttons(&mut lines, app, submit_label);
 
-    let para = Paragraph::new(lines).wrap(Wrap { trim: false }).scroll((app.form.scroll, 0));
+    let para = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .scroll((app.form.scroll, 0))
+        .style(Style::default().bg(Color::Black));
     frame.render_widget(para, inner);
 }
 
@@ -177,7 +180,12 @@ pub fn render_delete_modal(frame: &mut Frame, app: &App, idx: usize) {
             Span::styled(" [y/Enter] Delete Webhook ", Style::default().fg(Color::Red).bold()),
         ]),
     ];
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .style(Style::default().bg(Color::Black)),
+        inner,
+    );
 }
 
 pub fn render_created_modal(frame: &mut Frame, secret: &str) {
@@ -200,7 +208,12 @@ pub fn render_created_modal(frame: &mut Frame, secret: &str) {
         Line::raw(""),
         Line::from(Span::styled(" [Enter/Esc] Done ", Style::default().fg(Color::Cyan).bold())),
     ];
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .style(Style::default().bg(Color::Black)),
+        inner,
+    );
 }
 
 pub fn render_error_modal(frame: &mut Frame, msg: &str) {
@@ -221,7 +234,15 @@ pub fn render_error_modal(frame: &mut Frame, msg: &str) {
             Style::default().fg(Color::Cyan).bold(),
         )),
     ];
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+    // Apply bg=Black to the Paragraph itself so every cell in `inner` —
+    // including the wrap-padding cells without text — gets repainted, fully
+    // covering any underlying table borders.
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .style(Style::default().bg(Color::Black)),
+        inner,
+    );
 }
 
 pub fn render_details_modal(frame: &mut Frame, app: &App, log_id: &str) {
@@ -239,7 +260,10 @@ pub fn render_details_modal(frame: &mut Frame, app: &App, log_id: &str) {
     let detail = app.delivery_detail.as_ref().filter(|d| d.id == log_id);
     if detail.is_none() {
         lines.push(Line::from(Span::styled("Loading details…", Style::default().fg(Color::Yellow))));
-        let p = Paragraph::new(lines).wrap(Wrap { trim: false }).scroll((app.detail_scroll, 0));
+        let p = Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((app.detail_scroll, 0))
+            .style(Style::default().bg(Color::Black));
         frame.render_widget(p, inner);
         return;
     }
@@ -308,6 +332,9 @@ pub fn render_details_modal(frame: &mut Frame, app: &App, log_id: &str) {
         lines.push(Line::from(Span::styled(format!("Error: {err}"), Style::default().fg(Color::Red))));
     }
 
-    let para = Paragraph::new(lines).wrap(Wrap { trim: false }).scroll((app.detail_scroll, 0));
+    let para = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .scroll((app.detail_scroll, 0))
+        .style(Style::default().bg(Color::Black));
     frame.render_widget(para, inner);
 }
