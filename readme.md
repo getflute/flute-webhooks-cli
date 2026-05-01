@@ -142,6 +142,8 @@ Implementation plan: `docs/superpowers/plans/2026-04-30-flute-webhooks-tui.md`.
 
 **`Busy — try again in a moment` toast** — the action queue is briefly saturated by an in-flight API call. The next press will go through.
 
+**The polling cadence seems slow after an error** — that's the exponential backoff. On consecutive 401/403/404/5xx (or transport) failures the poll interval doubles each time, capped at 5 minutes. The counter resets to zero on the first successful poll. The error banner stays up the whole time so you can see what's happening.
+
 ## License
 
 MIT.
