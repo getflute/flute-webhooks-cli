@@ -87,8 +87,9 @@ async fn event_loop(
         while let Ok(ev) = events_rx.try_recv() {
             match ev {
                 PollerEvent::Snapshot(s) => app.apply_snapshot(s.endpoints, s.logs, s.event_types),
-                // Surface poller errors to the user as a toast (was: silently set last_error)
-                PollerEvent::Error(e) => app.show_toast(format!("Poll error: {e}")),
+                // Surface poller errors in the persistent error banner so the user has time
+                // to read them (Esc on the main screen dismisses).
+                PollerEvent::Error(e) => app.last_error = Some(format!("Poll error: {e}")),
             }
         }
         while let Ok(o) = outcome_rx.try_recv() { app.apply_outcome(o); }

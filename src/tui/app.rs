@@ -155,6 +155,8 @@ impl App {
         }
     }
 
+    pub fn clear_last_error(&mut self) { self.last_error = None; }
+
     pub fn set_delivery_detail(&mut self, d: crate::api::models::DeliveryLogDetailDto) {
         self.delivery_detail = Some(d);
     }
@@ -210,6 +212,10 @@ impl App {
 
     fn handle_main_key(&mut self, key: KeyEvent) -> AppAction {
         match key.code {
+            KeyCode::Esc if self.last_error.is_some() => {
+                self.clear_last_error();
+                AppAction::None
+            }
             KeyCode::Char('q') => { self.running = false; AppAction::None }
             KeyCode::Tab | KeyCode::BackTab => {
                 self.screen = match self.screen {
@@ -458,8 +464,9 @@ impl App {
                 self.modal = ModalState::WebhookCreated(secret);
             }
             ActionOutcome::Error(msg) => {
-                self.last_error = Some(msg.clone());
-                self.show_toast(format!("Error: {msg}"));
+                // Stick the error in the persistent banner so the user has time to read it
+                // (and see the correlation id). Esc on the main screen dismisses it.
+                self.last_error = Some(msg);
             }
             ActionOutcome::DeliveryDetail(d) => self.set_delivery_detail(d),
         }
@@ -553,5 +560,24 @@ mod tests {
         assert_eq!(app.cadence_mode(), crate::poller::CadenceMode::Backoff);
         app.modal = ModalState::None;
         assert_eq!(app.cadence_mode(), crate::poller::CadenceMode::Active);
+    }
+
+    #[test]
+    fn esc_on_main_screen_dismisses_last_error() {
+        let mut app = App::new(None);
+        app.last_error = Some("Poll error: 401".into());
+        let kp = KeyEvent { code: KeyCode::Esc, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        app.handle_key(kp);
+        assert!(app.last_error.is_none());
+        assert!(app.running, "dismissing error must not quit the app");
+    }
+
+    #[test]
+    fn error_outcome_sets_last_error_persistently() {
+        let mut app = App::new(None);
+        app.apply_outcome(ActionOutcome::Error("API 500 (correlation_id=abc): boom".into()));
+        assert_eq!(app.last_error.as_deref(), Some("API 500 (correlation_id=abc): boom"));
+        // Toast should NOT be set — errors are sticky in the banner, not transient.
+        assert!(app.toast_message.is_none());
     }
 }

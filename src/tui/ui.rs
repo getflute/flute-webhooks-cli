@@ -11,18 +11,25 @@ use crate::tui::app::{App, ModalState, Screen};
 use crate::tui::modals;
 
 pub fn render(frame: &mut Frame, app: &App) {
-    let chunks = Layout::vertical([
-        Constraint::Length(3),
-        Constraint::Min(0),
-        Constraint::Length(1),
-    ]).split(frame.area());
+    let has_error = app.last_error.is_some();
+    let constraints: Vec<Constraint> = if has_error {
+        vec![Constraint::Length(3), Constraint::Min(0), Constraint::Length(1), Constraint::Length(1)]
+    } else {
+        vec![Constraint::Length(3), Constraint::Min(0), Constraint::Length(1)]
+    };
+    let chunks = Layout::vertical(constraints).split(frame.area());
 
     render_tab_bar(frame, app, chunks[0]);
     match app.screen {
         Screen::Endpoints => render_endpoints(frame, app, chunks[1]),
         Screen::DeliveryLogs => render_logs(frame, app, chunks[1]),
     }
-    render_help_bar(frame, app, chunks[2]);
+    if has_error {
+        render_error_banner(frame, app.last_error.as_deref().unwrap_or(""), chunks[2]);
+        render_help_bar(frame, app, chunks[3]);
+    } else {
+        render_help_bar(frame, app, chunks[2]);
+    }
 
     match &app.modal {
         ModalState::None => {}
@@ -179,6 +186,7 @@ fn status_filter_label(app: &App) -> &'static str {
 
 fn render_help_bar(frame: &mut Frame, app: &App, area: Rect) {
     let help = match (&app.modal, &app.screen) {
+        (ModalState::None, _) if app.last_error.is_some() => "Esc: dismiss error | Tab: switch | ↑↓/jk: nav | q: quit",
         (ModalState::None, Screen::Endpoints) => "Tab: switch | ↑↓/jk: nav | c: create | e: edit | d: delete | q: quit",
         (ModalState::None, Screen::DeliveryLogs) => "Tab: switch | ↑↓/jk: nav | v: details | 1-3: filters | s: sort | x: clear | q: quit",
         (ModalState::CreateWebhook | ModalState::EditWebhook(_), _) => "Tab/↑↓: fields | Space: toggle | Enter: activate | PgUp/PgDn: scroll | Esc: cancel",
@@ -188,6 +196,17 @@ fn render_help_bar(frame: &mut Frame, app: &App, area: Rect) {
     };
     frame.render_widget(Paragraph::new(Line::from(Span::styled(format!(" {help}"),
         Style::default().fg(Color::Green)))).style(Style::default().bg(Color::Black)), area);
+}
+
+fn render_error_banner(frame: &mut Frame, msg: &str, area: Rect) {
+    let line = Line::from(Span::styled(
+        format!(" ✗ {msg}"),
+        Style::default().fg(Color::White).bg(Color::Red).bold(),
+    ));
+    frame.render_widget(
+        Paragraph::new(line).style(Style::default().bg(Color::Red)),
+        area,
+    );
 }
 
 fn render_toast(frame: &mut Frame, msg: &str) {
