@@ -103,8 +103,8 @@ Logs are written to `~/.flute/flute-webhook.log` (appended). The TUI owns stdout
 
 | Profile | API base | OAuth URL |
 |---|---|---|
-| `uat` (default) | `https://api.uat.arise.risewithaurora.com/isv-api` | `https://oauth.uat.arise.risewithaurora.com/oauth2/token` |
-| `production` (alias `prod`) | `https://api.arise.risewithaurora.com/isv-api` | `https://oauth.arise.risewithaurora.com/oauth2/token` |
+| `uat` (default) | `https://api.uat.arise.risewithaurora.com` | `https://oauth.uat.arise.risewithaurora.com/oauth2/token` |
+| `production` (alias `prod`) | `https://api.arise.risewithaurora.com` | `https://oauth.arise.risewithaurora.com/oauth2/token` |
 
 Use `--profile` (global flag, accepted before or after the subcommand). Active profile is shown in the dashboard title.
 

@@ -67,11 +67,12 @@ impl Profile {
     pub fn uat() -> Self {
         Self {
             name: "uat".into(),
-            // The ISV BFF is served under /isv-api on both UAT and production —
-            // the swagger UI lives at /isv-api/swagger/v2/swagger.json. Without
-            // this prefix, requests reach a different routing layer that
-            // returns a 500 with "ArgumentNullException: uriString".
-            api_base_url: "https://api.uat.arise.risewithaurora.com/isv-api".into(),
+            // Canonical API path: requests to /v2/... go through the Kestrel
+            // gateway (returns proper 401 with WWW-Authenticate: Bearer). The
+            // /isv-api/swagger/... prefix only hosts the swagger UI; routing
+            // to /isv-api/v2/... directly bypasses the gateway and 404s on
+            // every endpoint except the documentation routes.
+            api_base_url: "https://api.uat.arise.risewithaurora.com".into(),
             oauth_url: "https://oauth.uat.arise.risewithaurora.com/oauth2/token".into(),
         }
     }
@@ -79,7 +80,7 @@ impl Profile {
     pub fn production() -> Self {
         Self {
             name: "production".into(),
-            api_base_url: "https://api.arise.risewithaurora.com/isv-api".into(),
+            api_base_url: "https://api.arise.risewithaurora.com".into(),
             oauth_url: "https://oauth.arise.risewithaurora.com/oauth2/token".into(),
         }
     }
@@ -143,24 +144,28 @@ mod profile_tests {
     #[test]
     fn uat_profile_has_uat_hosts() {
         let p = Profile::uat();
-        assert_eq!(p.api_base_url, "https://api.uat.arise.risewithaurora.com/isv-api");
+        assert_eq!(p.api_base_url, "https://api.uat.arise.risewithaurora.com");
         assert_eq!(p.oauth_url, "https://oauth.uat.arise.risewithaurora.com/oauth2/token");
     }
 
     #[test]
     fn production_profile_has_prod_hosts() {
         let p = Profile::production();
-        assert_eq!(p.api_base_url, "https://api.arise.risewithaurora.com/isv-api");
+        assert_eq!(p.api_base_url, "https://api.arise.risewithaurora.com");
         assert_eq!(p.oauth_url, "https://oauth.arise.risewithaurora.com/oauth2/token");
     }
 
     #[test]
-    fn api_base_urls_use_isv_api_prefix() {
-        // Routing belt-and-braces: both profiles must include /isv-api so
-        // ApiClient calls to /v2/webhooks/* land on the ISV BFF.
+    fn api_base_urls_have_no_path_prefix() {
+        // Routing guard: the API is served at the root of the host. Any
+        // accidental path suffix on the base URL (e.g. /isv-api, /api) routes
+        // requests away from the gateway and yields 404s. Catch that here.
         for p in [Profile::uat(), Profile::production()] {
-            assert!(p.api_base_url.ends_with("/isv-api"),
-                "profile {} api_base_url must end in /isv-api: got {}",
+            let trimmed = p.api_base_url.trim_end_matches('/');
+            let path_idx = trimmed.find("//").map(|i| i + 2).unwrap_or(0);
+            let after_host = &trimmed[path_idx..];
+            assert!(!after_host.contains('/'),
+                "profile {} must have no path on its api_base_url: got {}",
                 p.name, p.api_base_url);
         }
     }
