@@ -203,6 +203,27 @@ pub fn render_created_modal(frame: &mut Frame, secret: &str) {
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
+pub fn render_error_modal(frame: &mut Frame, msg: &str) {
+    let area = centered_rect(70, 50, frame.area());
+    frame.render_widget(Clear, area);
+    let block = Block::default().borders(Borders::ALL)
+        .title(" ✗ Error ")
+        .title_style(Style::default().fg(Color::Red).bold())
+        .border_style(Style::default().fg(Color::Red))
+        .style(Style::default().bg(Color::Black));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let lines = vec![
+        Line::from(Span::styled(msg.to_string(), Style::default().fg(Color::White))),
+        Line::raw(""),
+        Line::from(Span::styled(
+            " [Enter/Esc] Dismiss ",
+            Style::default().fg(Color::Cyan).bold(),
+        )),
+    ];
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+}
+
 pub fn render_details_modal(frame: &mut Frame, app: &App, log_id: &str) {
     let area = centered_rect(75, 90, frame.area());
     frame.render_widget(Clear, area);

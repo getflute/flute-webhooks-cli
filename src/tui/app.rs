@@ -211,11 +211,16 @@ impl App {
     }
 
     fn handle_main_key(&mut self, key: KeyEvent) -> AppAction {
-        match key.code {
-            KeyCode::Esc if self.last_error.is_some() => {
+        // Error modal (rendered when modal=None and last_error=Some) absorbs every key
+        // except Enter/Esc (dismiss). q does NOT quit while an error is showing — same
+        // contract the create/edit form uses for its text-input fields.
+        if self.last_error.is_some() {
+            if matches!(key.code, KeyCode::Esc | KeyCode::Enter) {
                 self.clear_last_error();
-                AppAction::None
             }
+            return AppAction::None;
+        }
+        match key.code {
             KeyCode::Char('q') => { self.running = false; AppAction::None }
             KeyCode::Tab | KeyCode::BackTab => {
                 self.screen = match self.screen {
@@ -570,6 +575,31 @@ mod tests {
         app.handle_key(kp);
         assert!(app.last_error.is_none());
         assert!(app.running, "dismissing error must not quit the app");
+    }
+
+    #[test]
+    fn enter_dismisses_error_modal() {
+        let mut app = App::new(None);
+        app.last_error = Some("API 500".into());
+        let kp = KeyEvent { code: KeyCode::Enter, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        app.handle_key(kp);
+        assert!(app.last_error.is_none());
+    }
+
+    #[test]
+    fn error_modal_absorbs_q_and_other_keys() {
+        let mut app = App::new(None);
+        app.last_error = Some("API 500".into());
+        // q should NOT quit while the error modal is up — it gets swallowed.
+        app.handle_key(key('q'));
+        assert!(app.running, "q must not quit while error modal is showing");
+        assert!(app.last_error.is_some(), "q must not dismiss the error");
+        // c/d/e are also absorbed (no spurious modal opens).
+        for c in ['c', 'd', 'e', 's', 'x', '1', '2', '3'] {
+            app.handle_key(key(c));
+        }
+        assert_eq!(app.modal, ModalState::None);
+        assert!(app.last_error.is_some());
     }
 
     #[test]

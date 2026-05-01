@@ -2,7 +2,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Tabs, Wrap},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Tabs},
     Frame,
 };
 
@@ -11,29 +11,27 @@ use crate::tui::app::{App, ModalState, Screen};
 use crate::tui::modals;
 
 pub fn render(frame: &mut Frame, app: &App) {
-    let error_rows = error_banner_height(app.last_error.as_deref(), frame.area().width);
-    let has_error = error_rows > 0;
-    let constraints: Vec<Constraint> = if has_error {
-        vec![Constraint::Length(3), Constraint::Min(0), Constraint::Length(error_rows), Constraint::Length(1)]
-    } else {
-        vec![Constraint::Length(3), Constraint::Min(0), Constraint::Length(1)]
-    };
-    let chunks = Layout::vertical(constraints).split(frame.area());
+    let chunks = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Min(0),
+        Constraint::Length(1),
+    ]).split(frame.area());
 
     render_tab_bar(frame, app, chunks[0]);
     match app.screen {
         Screen::Endpoints => render_endpoints(frame, app, chunks[1]),
         Screen::DeliveryLogs => render_logs(frame, app, chunks[1]),
     }
-    if has_error {
-        render_error_banner(frame, app.last_error.as_deref().unwrap_or(""), chunks[2]);
-        render_help_bar(frame, app, chunks[3]);
-    } else {
-        render_help_bar(frame, app, chunks[2]);
-    }
+    render_help_bar(frame, app, chunks[2]);
 
     match &app.modal {
-        ModalState::None => {}
+        ModalState::None => {
+            // When no other modal is open and we have a pending error, show it as a modal
+            // so it can't shift the underlying layout out of alignment.
+            if let Some(msg) = &app.last_error {
+                modals::render_error_modal(frame, msg);
+            }
+        }
         ModalState::CreateWebhook => modals::render_create_modal(frame, app),
         ModalState::EditWebhook(_) => modals::render_edit_modal(frame, app),
         ModalState::DeleteWebhook(idx) => modals::render_delete_modal(frame, app, *idx),
@@ -187,7 +185,7 @@ fn status_filter_label(app: &App) -> &'static str {
 
 fn render_help_bar(frame: &mut Frame, app: &App, area: Rect) {
     let help = match (&app.modal, &app.screen) {
-        (ModalState::None, _) if app.last_error.is_some() => "Esc: dismiss error | Tab: switch | ↑↓/jk: nav | q: quit",
+        (ModalState::None, _) if app.last_error.is_some() => "Enter/Esc: dismiss error",
         (ModalState::None, Screen::Endpoints) => "Tab: switch | ↑↓/jk: nav | c: create | e: edit | d: delete | q: quit",
         (ModalState::None, Screen::DeliveryLogs) => "Tab: switch | ↑↓/jk: nav | v: details | 1-3: filters | s: sort | x: clear | q: quit",
         (ModalState::CreateWebhook | ModalState::EditWebhook(_), _) => "Tab/↑↓: fields | Space: toggle | Enter: activate | PgUp/PgDn: scroll | Esc: cancel",
@@ -197,30 +195,6 @@ fn render_help_bar(frame: &mut Frame, app: &App, area: Rect) {
     };
     frame.render_widget(Paragraph::new(Line::from(Span::styled(format!(" {help}"),
         Style::default().fg(Color::Green)))).style(Style::default().bg(Color::Black)), area);
-}
-
-/// Compute how many rows the error banner needs (0 when no error, capped at MAX_ERROR_ROWS).
-/// Width-aware so long error messages — including those with correlation IDs — wrap instead
-/// of being silently clipped at the terminal edge.
-const MAX_ERROR_ROWS: u16 = 5;
-const ERROR_PREFIX_COLS: usize = 4; // " ✗ "
-
-fn error_banner_height(msg: Option<&str>, term_width: u16) -> u16 {
-    let Some(msg) = msg else { return 0; };
-    let width = term_width.max(1) as usize;
-    let total = msg.chars().count() + ERROR_PREFIX_COLS;
-    let rows = total.div_ceil(width).max(1);
-    (rows as u16).min(MAX_ERROR_ROWS)
-}
-
-fn render_error_banner(frame: &mut Frame, msg: &str, area: Rect) {
-    let para = Paragraph::new(Span::styled(
-        format!(" ✗ {msg}"),
-        Style::default().fg(Color::White).bg(Color::Red).bold(),
-    ))
-    .wrap(Wrap { trim: false })
-    .style(Style::default().bg(Color::Red));
-    frame.render_widget(para, area);
 }
 
 fn render_toast(frame: &mut Frame, msg: &str) {

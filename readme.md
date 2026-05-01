@@ -73,7 +73,7 @@ cargo run -- --profile production tui
 | **Form modal (create/edit)** | `Tab`/`↑↓` move between fields · `Space`/`Enter` toggle controls · `PgUp`/`PgDn` scroll the event list · `Esc` cancel |
 | **Delete confirm** | `y`/`Enter` delete · `n`/`Esc` cancel |
 | **Details modal** | `↑↓`/`jk` scroll · `PgUp`/`PgDn` page · `Esc`/`Enter`/`q` close |
-| **Error banner** | `Esc` dismiss (when no modal is open) |
+| **Error modal** | `Enter`/`Esc` dismiss (every other key is absorbed) |
 
 While typing in a text field (URL or Name), single-character keys like `q`, `c`, `d`, `e` are treated as literal characters — they will not trigger the corresponding TUI commands.
 
@@ -138,7 +138,7 @@ Implementation plan: `docs/superpowers/plans/2026-04-30-flute-webhooks-tui.md`.
 
 **Terminal looks broken after a crash** — the panic hook should restore it automatically; if it didn't, run `reset` or `stty sane`.
 
-**Errors flash by too fast** — they don't anymore. Errors stick in a red banner above the help bar until you press `Esc` (on the main screen, with no modal open).
+**Errors flash by too fast** — they don't anymore. Errors pop a red modal that stays put until you press `Enter` or `Esc`. While it's up the modal absorbs every other key (so `q` doesn't quit, `c` doesn't open the create form, etc.).
 
 **`Busy — try again in a moment` toast** — the action queue is briefly saturated by an in-flight API call. The next press will go through.
 
