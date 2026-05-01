@@ -15,13 +15,19 @@ pub enum ApiError {
     Decode(String),
 }
 
+// The Flute API returns errors in two casings: camelCase from the public-API
+// layer and PascalCase from internal exception handlers (e.g. 500s with
+// "Title", "CorrelationId" capitalized). Accept both via serde alias so we
+// extract the correlation id from either response shape.
 #[derive(Debug, serde::Deserialize)]
 pub(crate) struct AspNetError {
+    #[serde(alias = "Details")]
     pub details: Option<String>,
+    #[serde(alias = "Title")]
     pub title: Option<String>,
-    #[serde(rename = "correlationId")]
+    #[serde(rename = "correlationId", alias = "CorrelationId")]
     pub correlation_id: Option<String>,
-    #[serde(rename = "errorCode")]
+    #[serde(rename = "errorCode", alias = "ErrorCode")]
     #[allow(dead_code)]
     pub error_code: Option<String>,
 }
@@ -63,6 +69,20 @@ mod tests {
                 assert_eq!(message, "oops");
             }
             _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn extracts_correlation_id_from_pascal_case_body() {
+        // Internal 500s from the API come back PascalCase.
+        let body = r#"{"Details":"Value cannot be null. (Parameter 'uriString')","StatusCode":500,"Source":"IsvApiBff","ExceptionType":"ArgumentNullException","CorrelationId":"45d859f6-dc38-4d8f-8bab-ae4e20036919","ErrorCode":"I0000","Title":"Internal server error"}"#;
+        match from_aspnet(500, body) {
+            ApiError::Api { status, correlation_id, message } => {
+                assert_eq!(status, 500);
+                assert_eq!(correlation_id.as_deref(), Some("45d859f6-dc38-4d8f-8bab-ae4e20036919"));
+                assert_eq!(message, "Internal server error");
+            }
+            _ => panic!("expected Api"),
         }
     }
 }
