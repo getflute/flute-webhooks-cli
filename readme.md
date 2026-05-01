@@ -97,7 +97,7 @@ If `poll_interval_seconds` is outside `5..=60`, the TUI shows a yellow warning i
 | `FLUTE_CLIENT_SECRET` | Same — both must be set together |
 | `RUST_LOG` | Tracing filter, e.g. `RUST_LOG=flute_webhook=debug` |
 
-Logs go to stderr; stdout is reserved for tool output (so it's safe to pipe).
+Logs are written to `~/.flute/flute-webhook.log` (appended). The TUI owns stdout/stderr while it's drawing, so writing logs to the terminal would corrupt the render — `tail -f ~/.flute/flute-webhook.log` is the way to follow them live.
 
 ## Profiles
 

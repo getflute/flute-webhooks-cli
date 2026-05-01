@@ -7,15 +7,10 @@ pub mod poller;
 pub mod tui;
 
 use clap::Parser;
+use std::sync::Mutex;
 
 pub fn run() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "warn,flute_webhook=info".into()),
-        )
-        .with_writer(std::io::stderr)
-        .init();
+    init_tracing();
 
     let cli = cli::Cli::parse();
     let profile = cli.profile.clone();
@@ -32,6 +27,40 @@ pub fn run() -> anyhow::Result<()> {
             cli::Command::Auth(cli::AuthCommand::Token) => auth_print_token(&profile).await,
         }
     })
+}
+
+/// Route tracing to ~/.flute/flute-webhook.log so log lines don't corrupt the
+/// alternate-screen TUI render. If the file can't be opened (e.g. read-only
+/// home directory), we fall back to a no-op subscriber rather than stderr —
+/// stderr-noise interleaving with ratatui paints is the bug we're fixing.
+fn init_tracing() {
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "warn,flute_webhook=info".into());
+
+    let _ = std::fs::create_dir_all(config::config_dir());
+    let log_path = config::config_dir().join("flute-webhook.log");
+
+    match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
+        Ok(file) => {
+            let _ = tracing_subscriber::fmt()
+                .with_env_filter(env_filter)
+                .with_writer(Mutex::new(file))
+                .with_ansi(false)
+                .try_init();
+        }
+        Err(_) => {
+            // No log file available — silence tracing entirely so we never
+            // write to stderr while the TUI owns the terminal.
+            let _ = tracing_subscriber::fmt()
+                .with_env_filter("off")
+                .with_writer(std::io::sink)
+                .try_init();
+        }
+    }
 }
 
 async fn auth_login(profile: &str) -> anyhow::Result<()> {
