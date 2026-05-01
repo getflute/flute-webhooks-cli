@@ -10,11 +10,13 @@ use clap::Parser;
 use std::sync::Mutex;
 
 pub fn run() -> anyhow::Result<()> {
-    init_tracing();
-
     let cli = cli::Cli::parse();
     let profile = cli.profile.clone();
+    let debug = cli.debug;
     let cmd = cli.command.unwrap_or(cli::Command::Tui);
+    let is_tui = matches!(cmd, cli::Command::Tui);
+
+    init_tracing(is_tui, debug);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -29,37 +31,54 @@ pub fn run() -> anyhow::Result<()> {
     })
 }
 
-/// Route tracing to ~/.flute/flute-webhook.log so log lines don't corrupt the
-/// alternate-screen TUI render. If the file can't be opened (e.g. read-only
-/// home directory), we fall back to a no-op subscriber rather than stderr —
-/// stderr-noise interleaving with ratatui paints is the bug we're fixing.
-fn init_tracing() {
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| "warn,flute_webhook=info".into());
+/// Route tracing output based on (is_tui, debug):
+///   tui + debug      -> ~/.flute/flute-webhook.log at DEBUG (stdout owned by ratatui)
+///   tui + no debug   -> ~/.flute/flute-webhook.log at INFO/WARN
+///   non-tui + debug  -> stdout at DEBUG (per --debug spec: "outputs every HTTP call to stdout")
+///   non-tui + normal -> stderr at INFO/WARN
+///
+/// RUST_LOG always overrides the default filter when set.
+fn init_tracing(is_tui: bool, debug: bool) {
+    let env_filter = if debug {
+        tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| "debug,flute_webhook=debug,reqwest=debug,hyper=info".into())
+    } else {
+        tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| "warn,flute_webhook=info".into())
+    };
 
-    let _ = std::fs::create_dir_all(config::config_dir());
-    let log_path = config::config_dir().join("flute-webhook.log");
-
-    match std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-    {
-        Ok(file) => {
-            let _ = tracing_subscriber::fmt()
-                .with_env_filter(env_filter)
-                .with_writer(Mutex::new(file))
-                .with_ansi(false)
-                .try_init();
+    if is_tui {
+        let _ = std::fs::create_dir_all(config::config_dir());
+        let log_path = config::config_dir().join("flute-webhook.log");
+        match std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+            Ok(file) => {
+                let _ = tracing_subscriber::fmt()
+                    .with_env_filter(env_filter)
+                    .with_writer(Mutex::new(file))
+                    .with_ansi(false)
+                    .try_init();
+                if debug {
+                    eprintln!("debug mode: HTTP traces -> {}", log_path.display());
+                }
+            }
+            Err(_) => {
+                let _ = tracing_subscriber::fmt()
+                    .with_env_filter("off")
+                    .with_writer(std::io::sink)
+                    .try_init();
+            }
         }
-        Err(_) => {
-            // No log file available — silence tracing entirely so we never
-            // write to stderr while the TUI owns the terminal.
-            let _ = tracing_subscriber::fmt()
-                .with_env_filter("off")
-                .with_writer(std::io::sink)
-                .try_init();
-        }
+    } else if debug {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .with_writer(std::io::stdout)
+            .with_ansi(false)
+            .try_init();
+    } else {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .with_writer(std::io::stderr)
+            .try_init();
     }
 }
 

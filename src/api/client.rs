@@ -2,6 +2,18 @@ use crate::api::error::{from_aspnet, ApiError};
 use crate::api::models::*;
 use crate::auth::token::TokenStore;
 use reqwest::{Client, Method};
+use tracing::debug;
+
+/// Truncate a body for logging so a 500 KB response doesn't dominate stdout.
+const MAX_LOG_BODY: usize = 4096;
+
+fn truncate_for_log(s: &str) -> String {
+    if s.len() <= MAX_LOG_BODY {
+        s.to_string()
+    } else {
+        format!("{}…[+{}B]", &s[..MAX_LOG_BODY], s.len() - MAX_LOG_BODY)
+    }
+}
 
 #[derive(Clone)]
 pub struct ApiClient {
@@ -19,13 +31,24 @@ impl ApiClient {
     ) -> Result<R, ApiError> {
         let token = self.tokens.bearer().await.map_err(|e| ApiError::Auth(e.to_string()))?;
         let url = format!("{}{}", self.base_url, path);
-        let mut req = self.http.request(method, &url).bearer_auth(token);
+        // Body is logged at debug level; bearer token is intentionally not logged.
+        let body_for_log = body.as_ref().map(|b| truncate_for_log(&b.to_string()));
+        debug!(method = %method, url = %url, body = ?body_for_log, "HTTP request");
+
+        let mut req = self.http.request(method.clone(), &url).bearer_auth(token);
         if let Some(b) = body {
             req = req.json(&b);
         }
         let resp = req.send().await?;
         let status = resp.status();
         let text = resp.text().await?;
+
+        debug!(
+            method = %method, url = %url, status = status.as_u16(),
+            body = %truncate_for_log(&text),
+            "HTTP response"
+        );
+
         if status.is_success() {
             serde_json::from_str::<R>(&text).map_err(|e| ApiError::Decode(e.to_string()))
         } else {
@@ -36,12 +59,20 @@ impl ApiClient {
     async fn send_no_body(&self, method: Method, path: &str) -> Result<(), ApiError> {
         let token = self.tokens.bearer().await.map_err(|e| ApiError::Auth(e.to_string()))?;
         let url = format!("{}{}", self.base_url, path);
-        let resp = self.http.request(method, &url).bearer_auth(token).send().await?;
+        debug!(method = %method, url = %url, "HTTP request");
+
+        let resp = self.http.request(method.clone(), &url).bearer_auth(token).send().await?;
         let status = resp.status();
         if status.is_success() {
+            debug!(method = %method, url = %url, status = status.as_u16(), "HTTP response (no body)");
             Ok(())
         } else {
             let text = resp.text().await.unwrap_or_default();
+            debug!(
+                method = %method, url = %url, status = status.as_u16(),
+                body = %truncate_for_log(&text),
+                "HTTP response"
+            );
             Err(from_aspnet(status.as_u16(), &text))
         }
     }

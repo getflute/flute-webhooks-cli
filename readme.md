@@ -95,9 +95,20 @@ If `poll_interval_seconds` is outside `5..=60`, the TUI shows a yellow warning i
 | `FLUTE_PROFILE` | Default profile (overridden by `--profile`) |
 | `FLUTE_CLIENT_ID` | Skips keychain lookup — used for CI |
 | `FLUTE_CLIENT_SECRET` | Same — both must be set together |
-| `RUST_LOG` | Tracing filter, e.g. `RUST_LOG=flute_webhook=debug` |
+| `RUST_LOG` | Tracing filter, e.g. `RUST_LOG=flute_webhook=debug` (overrides `--debug` defaults if set) |
 
-Logs are written to `~/.flute/flute-webhook.log` (appended). The TUI owns stdout/stderr while it's drawing, so writing logs to the terminal would corrupt the render — `tail -f ~/.flute/flute-webhook.log` is the way to follow them live.
+### Debugging HTTP traffic
+
+Pass `--debug` to log every HTTP request and response (status, URL, body) at debug level:
+
+```bash
+flute-webhook --debug auth token        # traces print to STDOUT
+flute-webhook --debug                   # TUI: traces go to ~/.flute/flute-webhook.log
+```
+
+For non-TUI commands, traces print to **stdout** so you can pipe them through `jq` / `grep`. For the TUI, stdout is owned by ratatui, so traces are appended to `~/.flute/flute-webhook.log` instead — open a second terminal and `tail -f ~/.flute/flute-webhook.log` to watch live. Bodies over 4 KB are truncated; the bearer token is never logged.
+
+Without `--debug`, default tracing is INFO/WARN — non-TUI commands write to stderr, the TUI writes to the log file.
 
 ## Profiles
 
