@@ -1,8 +1,11 @@
 use crate::api::error::{from_aspnet, ApiError};
 use crate::api::models::*;
 use crate::auth::token::TokenStore;
+use reqwest::header::ACCEPT;
 use reqwest::{Client, Method};
 use tracing::debug;
+
+const JSON: &str = "application/json";
 
 #[derive(Clone)]
 pub struct ApiClient {
@@ -24,7 +27,14 @@ impl ApiClient {
         let body_for_log = body.as_ref().map(|b| b.to_string());
         debug!(method = %method, url = %url, body = ?body_for_log, "HTTP request");
 
-        let mut req = self.http.request(method.clone(), &url).bearer_auth(token);
+        // Accept: application/json on every request so the ASP.NET content
+        // negotiation pipeline always returns JSON (and never falls into a
+        // different format-handler that has its own bugs). Content-Type is set
+        // for us by .json() when a body is present.
+        let mut req = self.http
+            .request(method.clone(), &url)
+            .bearer_auth(token)
+            .header(ACCEPT, JSON);
         if let Some(b) = body {
             req = req.json(&b);
         }
@@ -50,7 +60,12 @@ impl ApiClient {
         let url = format!("{}{}", self.base_url, path);
         debug!(method = %method, url = %url, "HTTP request");
 
-        let resp = self.http.request(method.clone(), &url).bearer_auth(token).send().await?;
+        let resp = self.http
+            .request(method.clone(), &url)
+            .bearer_auth(token)
+            .header(ACCEPT, JSON)
+            .send()
+            .await?;
         let status = resp.status();
         if status.is_success() {
             debug!(method = %method, url = %url, status = status.as_u16(), "HTTP response (no body)");
