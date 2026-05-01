@@ -106,7 +106,7 @@ flute-webhook --debug auth token        # traces print to STDOUT
 flute-webhook --debug tui               # TUI: traces go to ~/.flute/flute-webhook.log
 ```
 
-For non-TUI commands, traces print to **stdout** so you can pipe them through `jq` / `grep`. For the TUI, stdout is owned by ratatui, so traces are appended to `~/.flute/flute-webhook.log` instead — open a second terminal and `tail -f ~/.flute/flute-webhook.log` to watch live. Bodies over 4 KB are truncated; the bearer token is never logged.
+For non-TUI commands, traces print to **stdout** so you can pipe them through `jq` / `grep`. For the TUI, stdout is owned by ratatui, so traces are appended to `~/.flute/flute-webhook.log` instead — open a second terminal and `tail -f ~/.flute/flute-webhook.log` to watch live. Response bodies are logged in full (no truncation) so server stack traces are captured intact; the bearer token is never logged.
 
 Without `--debug`, default tracing is INFO/WARN — non-TUI commands write to stderr, the TUI writes to the log file.
 

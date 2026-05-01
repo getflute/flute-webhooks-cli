@@ -4,17 +4,6 @@ use crate::auth::token::TokenStore;
 use reqwest::{Client, Method};
 use tracing::debug;
 
-/// Truncate a body for logging so a 500 KB response doesn't dominate stdout.
-const MAX_LOG_BODY: usize = 4096;
-
-fn truncate_for_log(s: &str) -> String {
-    if s.len() <= MAX_LOG_BODY {
-        s.to_string()
-    } else {
-        format!("{}…[+{}B]", &s[..MAX_LOG_BODY], s.len() - MAX_LOG_BODY)
-    }
-}
-
 #[derive(Clone)]
 pub struct ApiClient {
     pub base_url: String,
@@ -31,8 +20,8 @@ impl ApiClient {
     ) -> Result<R, ApiError> {
         let token = self.tokens.bearer().await.map_err(|e| ApiError::Auth(e.to_string()))?;
         let url = format!("{}{}", self.base_url, path);
-        // Body is logged at debug level; bearer token is intentionally not logged.
-        let body_for_log = body.as_ref().map(|b| truncate_for_log(&b.to_string()));
+        // Body is logged at debug level in full; bearer token is intentionally not logged.
+        let body_for_log = body.as_ref().map(|b| b.to_string());
         debug!(method = %method, url = %url, body = ?body_for_log, "HTTP request");
 
         let mut req = self.http.request(method.clone(), &url).bearer_auth(token);
@@ -45,7 +34,7 @@ impl ApiClient {
 
         debug!(
             method = %method, url = %url, status = status.as_u16(),
-            body = %truncate_for_log(&text),
+            body = %text,
             "HTTP response"
         );
 
@@ -70,7 +59,7 @@ impl ApiClient {
             let text = resp.text().await.unwrap_or_default();
             debug!(
                 method = %method, url = %url, status = status.as_u16(),
-                body = %truncate_for_log(&text),
+                body = %text,
                 "HTTP response"
             );
             Err(from_aspnet(status.as_u16(), &text))
