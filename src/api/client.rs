@@ -82,27 +82,7 @@ impl ApiClient {
     }
 
     pub async fn list_endpoints(&self) -> Result<ListWebhookEndpointsDto, ApiError> {
-        // TEMPORARY DEBUG: route this one call to merchant-api/api instead of
-        // api/v2 so the user can compare the two hosts. Revert this method to
-        //     self.send(Method::GET, "/v2/webhooks/endpoints", None).await
-        // when done.
-        let token = self.tokens.bearer().await.map_err(|e| ApiError::Auth(e.to_string()))?;
-        let url = "https://merchant-api.uat.arise.risewithaurora.com/api/webhooks/endpoints";
-        debug!(method = "GET", url = %url, "HTTP request");
-        let resp = self.http
-            .get(url)
-            .bearer_auth(token)
-            .header(ACCEPT, JSON)
-            .send()
-            .await?;
-        let status = resp.status();
-        let text = resp.text().await?;
-        debug!(method = "GET", url = %url, status = status.as_u16(), body = %text, "HTTP response");
-        if status.is_success() {
-            serde_json::from_str(&text).map_err(|e| ApiError::Decode(e.to_string()))
-        } else {
-            Err(from_aspnet(status.as_u16(), &text))
-        }
+        self.send(Method::GET, "/v2/webhooks/endpoints", None).await
     }
 
     pub async fn create_endpoint(
