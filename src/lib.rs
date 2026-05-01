@@ -6,14 +6,22 @@ pub mod domain;
 pub mod poller;
 pub mod tui;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use std::sync::Mutex;
 
 pub fn run() -> anyhow::Result<()> {
     let cli = cli::Cli::parse();
     let profile = cli.profile.clone();
     let debug = cli.debug;
-    let cmd = cli.command.unwrap_or(cli::Command::Tui);
+
+    // No subcommand: print help and exit. Previously defaulted to launching the
+    // TUI, which surprised users who ran `flute-webhook --debug` expecting to
+    // be told what to do.
+    let Some(cmd) = cli.command else {
+        cli::Cli::command().print_help()?;
+        println!();
+        return Ok(());
+    };
     let is_tui = matches!(cmd, cli::Command::Tui);
 
     init_tracing(is_tui, debug);

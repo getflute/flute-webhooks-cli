@@ -56,12 +56,12 @@ Prints the current bearer JWT (useful for `curl` smoke tests). If credentials ar
 ### 3. Launch the TUI
 
 ```bash
-cargo run
-# or
 cargo run -- tui
 # or against production
 cargo run -- --profile production tui
 ```
+
+`cargo run` (no subcommand) prints the help text — it does not launch the TUI silently. Use `tui` explicitly.
 
 ## Key bindings
 
@@ -103,7 +103,7 @@ Pass `--debug` to log every HTTP request and response (status, URL, body) at deb
 
 ```bash
 flute-webhook --debug auth token        # traces print to STDOUT
-flute-webhook --debug                   # TUI: traces go to ~/.flute/flute-webhook.log
+flute-webhook --debug tui               # TUI: traces go to ~/.flute/flute-webhook.log
 ```
 
 For non-TUI commands, traces print to **stdout** so you can pipe them through `jq` / `grep`. For the TUI, stdout is owned by ratatui, so traces are appended to `~/.flute/flute-webhook.log` instead — open a second terminal and `tail -f ~/.flute/flute-webhook.log` to watch live. Bodies over 4 KB are truncated; the bearer token is never logged.

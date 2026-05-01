@@ -18,7 +18,7 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Launch the interactive TUI (default if no subcommand is given).
+    /// Launch the interactive TUI.
     Tui,
 
     /// Auth subcommands.
