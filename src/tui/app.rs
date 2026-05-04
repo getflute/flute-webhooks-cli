@@ -93,36 +93,51 @@ impl FormState {
         self.auto_scroll();
     }
 
+    // Each event row produces a checkbox line + a description line.
+    const LINES_PER_EVENT: u16 = 2;
+    // Subtitle + URL field block + Name field block + (Status block if edit)
+    // + Events header + blank lines.
+    const PREAMBLE_LINES: u16 = 14;
+    // Group headers + blank-between-groups across the whole event list — ≈ 7
+    // groups * 2 lines is the typical case from the live API.
+    const GROUP_OVERHEAD_LINES: u16 = 14;
+    // Final blank + the button row.
+    const FOOTER_LINES: u16 = 3;
+    // How many lines of context to keep above the active event.
+    const VISIBLE_OFFSET: u16 = 20;
+
+    /// Best-effort estimate of the wrapped form's total line count. Used both
+    /// to clamp scroll on PgDn and to position scroll for Cancel/Submit.
+    pub fn total_form_lines(&self) -> u16 {
+        Self::PREAMBLE_LINES
+            .saturating_add((self.events.len() as u16).saturating_mul(Self::LINES_PER_EVENT))
+            .saturating_add(Self::GROUP_OVERHEAD_LINES)
+            .saturating_add(Self::FOOTER_LINES)
+    }
+
+    /// Maximum scroll value we should allow. Going past this leaves the
+    /// viewport blank and (for very large values) underflows ratatui's
+    /// Paragraph and panics.
+    pub fn max_scroll(&self) -> u16 {
+        // Leave at least 8 lines of content visible at the bottom so the user
+        // can always see SOMETHING when they scroll all the way down.
+        self.total_form_lines().saturating_sub(8)
+    }
+
     /// Adjust `scroll` so the active field stays visible after Tab navigation.
-    /// Heuristic: each event row contributes ~3 wrapped lines (checkbox +
-    /// description + group spacing); the form preamble is ~14 lines. Aim to
-    /// keep the active event ~20 lines below the viewport top.
-    ///
-    /// IMPORTANT: never set scroll to u16::MAX or any value far above the
-    /// actual form height — ratatui's Paragraph does internal arithmetic with
-    /// scroll (e.g. line_y - scroll.0) that underflows in debug builds and
-    /// panics, which the panic hook converts into a silent app exit.
     fn auto_scroll(&mut self) {
-        const PREAMBLE: u16 = 14;
-        const LINES_PER_EVENT: u16 = 3;
-        const VISIBLE_OFFSET: u16 = 20;
-        self.scroll = match &self.active_field {
+        let raw = match &self.active_field {
             FormField::Url | FormField::Name | FormField::Status
             | FormField::CheckAll | FormField::UncheckAll => 0,
             FormField::Event(i) => {
-                let approx_line = (*i as u16).saturating_mul(LINES_PER_EVENT).saturating_add(PREAMBLE);
-                approx_line.saturating_sub(VISIBLE_OFFSET)
+                let approx_line = (*i as u16)
+                    .saturating_mul(Self::LINES_PER_EVENT)
+                    .saturating_add(Self::PREAMBLE_LINES);
+                approx_line.saturating_sub(Self::VISIBLE_OFFSET)
             }
-            FormField::Cancel | FormField::Submit => {
-                // Bounded value computed from the actual events count; puts the
-                // buttons near the bottom of the viewport without overshooting
-                // the form's true height.
-                let total_form_lines = (self.events.len() as u16)
-                    .saturating_mul(LINES_PER_EVENT)
-                    .saturating_add(PREAMBLE);
-                total_form_lines.saturating_sub(5)
-            }
+            FormField::Cancel | FormField::Submit => self.max_scroll(),
         };
+        self.scroll = raw.min(self.max_scroll());
     }
 }
 
@@ -365,8 +380,15 @@ impl App {
             KeyCode::Esc => { self.modal = ModalState::None; return AppAction::None; }
             KeyCode::Tab | KeyCode::Down => { self.form.next_field(n); return AppAction::None; }
             KeyCode::BackTab | KeyCode::Up => { self.form.prev_field(n); return AppAction::None; }
-            KeyCode::PageDown => { self.form.scroll = self.form.scroll.saturating_add(15); return AppAction::None; }
-            KeyCode::PageUp => { self.form.scroll = self.form.scroll.saturating_sub(15); return AppAction::None; }
+            KeyCode::PageDown => {
+                let max = self.form.max_scroll();
+                self.form.scroll = self.form.scroll.saturating_add(15).min(max);
+                return AppAction::None;
+            }
+            KeyCode::PageUp => {
+                self.form.scroll = self.form.scroll.saturating_sub(15);
+                return AppAction::None;
+            }
             KeyCode::Enter => return self.activate_form_field(),
             KeyCode::Backspace => match self.form.active_field {
                 FormField::Url => { self.form.url.pop(); return AppAction::None; }
@@ -652,6 +674,36 @@ mod tests {
         app.form.active_field = FormField::Url;
         app.form.auto_scroll();
         assert_eq!(app.form.scroll, 0);
+    }
+
+    #[test]
+    fn pgdown_clamps_to_max_scroll_so_you_dont_scroll_past_the_form() {
+        let mut app = App::new(None);
+        app.modal = ModalState::CreateWebhook;
+        app.form = FormState::new_create(35);
+        let max = app.form.max_scroll();
+        let pg = KeyEvent { code: KeyCode::PageDown, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        // Mash PgDn far more times than the form is long.
+        for _ in 0..200 { app.handle_key(pg); }
+        assert_eq!(app.form.scroll, max,
+            "scroll must clamp at max_scroll ({max}), got {}", app.form.scroll);
+    }
+
+    #[test]
+    fn submit_field_lands_within_visible_form() {
+        // Cancel/Submit must end up with scroll <= max_scroll so the buttons
+        // are actually visible (previously raw scroll could exceed total form
+        // height, leaving the viewport empty).
+        let mut app = App::new(None);
+        app.modal = ModalState::CreateWebhook;
+        app.form = FormState::new_create(35);
+        app.form.active_field = FormField::Submit;
+        app.form.auto_scroll();
+        assert!(app.form.scroll <= app.form.max_scroll(),
+            "scroll={} must be <= max_scroll={}",
+            app.form.scroll, app.form.max_scroll());
+        assert_eq!(app.form.scroll, app.form.max_scroll(),
+            "Submit should sit at max_scroll so the buttons are flush at the bottom");
     }
 
     #[test]
