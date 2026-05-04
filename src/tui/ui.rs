@@ -78,20 +78,27 @@ fn render_endpoints(frame: &mut Frame, app: &App, area: Rect) {
         Cell::from("Events"), Cell::from("Status"), Cell::from("Actions"),
     ]).style(Style::default().bold().fg(Color::Green));
 
+    let total_event_types = app.event_types.len();
     let rows: Vec<Row> = app.endpoints.iter().enumerate().map(|(i, ep)| {
         let status_style = match ep.status {
             WebhookEndpointStatus::Active => Style::default().fg(Color::Green),
             WebhookEndpointStatus::Inactive => Style::default().fg(Color::Yellow),
         };
-        let count = if ep.trigger_count_partial {
-            format!("{}+", ep.trigger_count)
+        // Number of event types this endpoint is subscribed to. When that
+        // equals the total available event types we render "All" for parity
+        // with the reference TUI; otherwise a "<subscribed>/<total>" ratio.
+        let subscribed = ep.event_types.len();
+        let events_display = if total_event_types > 0 && subscribed == total_event_types {
+            "All".to_string()
+        } else if total_event_types > 0 {
+            format!("{subscribed}/{total_event_types}")
         } else {
-            ep.trigger_count.to_string()
+            subscribed.to_string()
         };
         let row = Row::new(vec![
             Cell::from(ep.name.clone()),
             Cell::from(Span::styled(ep.endpoint_url.clone(), Style::default().fg(Color::Blue))),
-            Cell::from(count),
+            Cell::from(events_display),
             Cell::from(Span::styled(
                 match ep.status {
                     WebhookEndpointStatus::Active => "Active",

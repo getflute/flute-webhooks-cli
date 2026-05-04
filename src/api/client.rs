@@ -126,15 +126,6 @@ impl ApiClient {
         self.send(Method::GET, &format!("/v2/webhooks/delivery-logs?limit={limit}"), None).await
     }
 
-    /// Total number of delivery logs for a single webhook endpoint, read from
-    /// the API's `total` field. Use this for accurate per-endpoint trigger
-    /// counts instead of trying to derive them from a paginated sample.
-    pub async fn count_delivery_logs(&self, webhook_id: &str) -> Result<u32, ApiError> {
-        let path = format!("/v2/webhooks/delivery-logs?webhookId={webhook_id}&limit=1");
-        let resp: ListDeliveryLogsDto = self.send(Method::GET, &path, None).await?;
-        Ok(resp.total.map(|c| c.max(0) as u32).unwrap_or(0))
-    }
-
     pub async fn get_delivery_log(&self, id: &str) -> Result<DeliveryLogDetailDto, ApiError> {
         self.send(Method::GET, &format!("/v2/webhooks/delivery-logs/{id}"), None).await
     }

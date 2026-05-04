@@ -142,33 +142,10 @@ async fn poll_once(api: &ApiClient, event_types: &[EventTypeMeta]) -> Result<Sna
         message: format!("logs: {e}"),
     })?;
 
-    let mut endpoints: Vec<Endpoint> = endpoints_resp.data.unwrap_or_default()
+    let endpoints: Vec<Endpoint> = endpoints_resp.data.unwrap_or_default()
         .into_iter().map(Endpoint::from).collect();
     let logs: Vec<DeliveryLog> = logs_resp.items.unwrap_or_default()
         .into_iter().map(DeliveryLog::from).collect();
-
-    // Authoritative per-endpoint trigger counts via the API's `total` field.
-    // One limit=1 round-trip per endpoint, sequential — at the ~5–10 endpoints
-    // typical for an ISV deployment that's <500 ms in aggregate, well inside
-    // a 5 s poll cycle.
-    let total_logs = logs_resp.total.unwrap_or(0);
-    let truncated = total_logs as usize > logs.len();
-    for ep in endpoints.iter_mut() {
-        match api.count_delivery_logs(&ep.id).await {
-            Ok(c) => {
-                ep.trigger_count = c;
-                // We have the real total, so no '+' suffix is needed.
-                ep.trigger_count_partial = false;
-            }
-            Err(_) => {
-                // One endpoint's count failed — fall back to the local sample
-                // for that endpoint only. The rest still got accurate counts.
-                let local = logs.iter().filter(|l| l.endpoint_id == ep.id).count() as u32;
-                ep.trigger_count = local;
-                ep.trigger_count_partial = truncated && local > 0;
-            }
-        }
-    }
 
     Ok(Snapshot {
         endpoints, logs,
