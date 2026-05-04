@@ -4,7 +4,7 @@ use tracing::{info, warn};
 
 use crate::api::{ApiClient, ApiError};
 use crate::config::POLL_BACKOFF_SECS;
-use crate::domain::{aggregate_counts, DeliveryLog, Endpoint, EventTypeMeta};
+use crate::domain::{DeliveryLog, Endpoint, EventTypeMeta};
 
 /// Hard cap on backoff sleep so a long outage doesn't leave the user waiting too long.
 /// The effective cap is max(MAX_BACKOFF_SECS, configured base interval) — a user with a
@@ -146,9 +146,28 @@ async fn poll_once(api: &ApiClient, event_types: &[EventTypeMeta]) -> Result<Sna
         .into_iter().map(Endpoint::from).collect();
     let logs: Vec<DeliveryLog> = logs_resp.data.unwrap_or_default()
         .into_iter().map(DeliveryLog::from).collect();
-    let has_more = logs_resp.pagination.map(|p| p.has_more).unwrap_or(false);
 
-    aggregate_counts(&mut endpoints, &logs, has_more);
+    // Authoritative per-endpoint trigger counts via the API's pagination
+    // totalCount. One limit=1 round-trip per endpoint, sequential — at the
+    // ~5–10 endpoints typical for an ISV deployment that's <500 ms in
+    // aggregate, well inside a 5 s poll cycle.
+    let has_more = logs_resp.pagination.as_ref().is_some_and(|p| p.has_more);
+    for ep in endpoints.iter_mut() {
+        match api.count_delivery_logs(&ep.id).await {
+            Ok(c) => {
+                ep.trigger_count = c;
+                // We have the real total, so no '+' suffix is needed.
+                ep.trigger_count_partial = false;
+            }
+            Err(_) => {
+                // One endpoint's count failed — fall back to the local sample
+                // for that endpoint only. The rest still got accurate counts.
+                let local = logs.iter().filter(|l| l.endpoint_id == ep.id).count() as u32;
+                ep.trigger_count = local;
+                ep.trigger_count_partial = has_more && local > 0;
+            }
+        }
+    }
 
     Ok(Snapshot {
         endpoints, logs,
@@ -156,6 +175,7 @@ async fn poll_once(api: &ApiClient, event_types: &[EventTypeMeta]) -> Result<Sna
         fetched_at: chrono::Utc::now(),
     })
 }
+
 
 #[cfg(test)]
 mod tests {
