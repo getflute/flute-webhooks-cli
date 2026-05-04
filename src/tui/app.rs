@@ -75,6 +75,7 @@ impl FormState {
             FormField::Cancel => FormField::Submit,
             FormField::Submit => FormField::Url,
         };
+        self.auto_scroll();
     }
 
     pub fn prev_field(&mut self, num_events: usize) {
@@ -88,6 +89,27 @@ impl FormState {
             FormField::Event(i) => FormField::Event(*i - 1),
             FormField::Cancel => if num_events > 0 { FormField::Event(num_events - 1) } else { FormField::UncheckAll },
             FormField::Submit => FormField::Cancel,
+        };
+        self.auto_scroll();
+    }
+
+    /// Adjust `scroll` so the active field stays visible after Tab navigation.
+    /// Heuristic: each event row contributes ~3 wrapped lines (checkbox +
+    /// description + group spacing); the form preamble is ~14 lines. Aim to
+    /// keep the active event ~20 lines below the viewport top.
+    fn auto_scroll(&mut self) {
+        const PREAMBLE: u16 = 14;
+        const LINES_PER_EVENT: u16 = 3;
+        const VISIBLE_OFFSET: u16 = 20;
+        self.scroll = match &self.active_field {
+            FormField::Url | FormField::Name | FormField::Status
+            | FormField::CheckAll | FormField::UncheckAll => 0,
+            FormField::Event(i) => {
+                let approx_line = (*i as u16).saturating_mul(LINES_PER_EVENT).saturating_add(PREAMBLE);
+                approx_line.saturating_sub(VISIBLE_OFFSET)
+            }
+            // Big number — Paragraph::scroll clamps to the available height.
+            FormField::Cancel | FormField::Submit => u16::MAX,
         };
     }
 }
@@ -331,8 +353,8 @@ impl App {
             KeyCode::Esc => { self.modal = ModalState::None; return AppAction::None; }
             KeyCode::Tab | KeyCode::Down => { self.form.next_field(n); return AppAction::None; }
             KeyCode::BackTab | KeyCode::Up => { self.form.prev_field(n); return AppAction::None; }
-            KeyCode::PageDown => { self.form.scroll = self.form.scroll.saturating_add(5); return AppAction::None; }
-            KeyCode::PageUp => { self.form.scroll = self.form.scroll.saturating_sub(5); return AppAction::None; }
+            KeyCode::PageDown => { self.form.scroll = self.form.scroll.saturating_add(15); return AppAction::None; }
+            KeyCode::PageUp => { self.form.scroll = self.form.scroll.saturating_sub(15); return AppAction::None; }
             KeyCode::Enter => return self.activate_form_field(),
             KeyCode::Backspace => match self.form.active_field {
                 FormField::Url => { self.form.url.pop(); return AppAction::None; }
@@ -555,7 +577,42 @@ mod tests {
         let kp = KeyEvent { code: KeyCode::PageDown, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
         app.handle_key(kp);
         app.handle_key(kp);
-        assert_eq!(app.form.scroll, 10);
+        // Manual PgDn step is 15 — two presses gives 30.
+        assert_eq!(app.form.scroll, 30);
+    }
+
+    #[test]
+    fn tab_navigation_auto_scrolls_to_distant_events() {
+        // Reproduces the reported bug: tabbing to events near the bottom of
+        // the list left the highlight off-screen because scroll wasn't following.
+        let mut app = App::new(None);
+        app.modal = ModalState::CreateWebhook;
+        // Pretend we have 35 event types loaded.
+        app.event_types = (0..35)
+            .map(|i| crate::domain::EventTypeMeta {
+                name: format!("event.{i}"),
+                description: format!("desc {i}"),
+                group: "Test".into(),
+            })
+            .collect();
+        app.form = FormState::new_create(app.event_types.len());
+
+        // Top of the form: scroll stays at 0.
+        assert_eq!(app.form.scroll, 0);
+
+        // Jump active_field to a far-down event (skipping intermediate Tabs).
+        app.form.active_field = FormField::Event(34);
+        app.form.auto_scroll();
+        assert!(
+            app.form.scroll > 50,
+            "scroll must follow active event 34, got {}",
+            app.form.scroll
+        );
+
+        // Returning to a top field resets the viewport.
+        app.form.active_field = FormField::Url;
+        app.form.auto_scroll();
+        assert_eq!(app.form.scroll, 0);
     }
 
     #[test]
