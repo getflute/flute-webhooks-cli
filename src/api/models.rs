@@ -114,19 +114,15 @@ pub struct DeliveryLogDetailDto {
     pub next_retry_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PaginationDto {
-    pub has_more: bool,
-    pub cursor: Option<String>,
-    pub total_count: Option<i32>,
-}
-
+/// Live API delivery-logs response shape: `{ "items": [...], "total": N }`.
+/// (The earlier `{ "data": [...], "pagination": {...} }` shape was from a
+/// stale local swagger.json — confirmed against the live spec at
+/// /isv-api/swagger/v2/swagger.json.)
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListDeliveryLogsDto {
-    pub data: Option<Vec<DeliveryLogSummaryDto>>,
-    pub pagination: Option<PaginationDto>,
+    pub items: Option<Vec<DeliveryLogSummaryDto>>,
+    pub total: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -169,11 +165,11 @@ mod tests {
     }
 
     #[test]
-    fn deserializes_pagination() {
-        let json = r#"{"hasMore":true,"cursor":"abc","totalCount":42}"#;
-        let v: PaginationDto = serde_json::from_str(json).unwrap();
-        assert!(v.has_more);
-        assert_eq!(v.cursor.as_deref(), Some("abc"));
-        assert_eq!(v.total_count, Some(42));
+    fn deserializes_delivery_logs_list_with_items_and_total() {
+        // Matches the live API shape: { items: [...], total: N }.
+        let json = r#"{"items":[{"id":"00000000-0000-0000-0000-0000000000aa","webhookEndpointId":"00000000-0000-0000-0000-0000000000bb","eventId":"00000000-0000-0000-0000-0000000000cc","eventType":"transaction.card.captured","attemptNumber":1,"status":"Success","responseStatusCode":200,"durationMs":12,"errorMessage":null,"createdOn":"2026-04-30T12:00:00Z","webhookName":null,"endpointUrl":null}],"total":4242}"#;
+        let v: ListDeliveryLogsDto = serde_json::from_str(json).unwrap();
+        assert_eq!(v.items.unwrap().len(), 1);
+        assert_eq!(v.total, Some(4242));
     }
 }
