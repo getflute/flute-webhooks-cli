@@ -313,6 +313,8 @@ impl App {
     }
 
     fn handle_logs_key(&mut self, key: KeyEvent) -> AppAction {
+        // How many rows PgUp/PgDn skip per press.
+        const PAGE_STEP: usize = 10;
         let filtered = self.filtered_log_indices();
         let n = filtered.len();
         match key.code {
@@ -322,6 +324,16 @@ impl App {
             KeyCode::Down | KeyCode::Char('j') if n > 0 && self.selected_log + 1 < n => {
                 self.selected_log += 1; AppAction::None
             }
+            KeyCode::PageDown if n > 0 => {
+                self.selected_log = (self.selected_log + PAGE_STEP).min(n - 1);
+                AppAction::None
+            }
+            KeyCode::PageUp if n > 0 => {
+                self.selected_log = self.selected_log.saturating_sub(PAGE_STEP);
+                AppAction::None
+            }
+            KeyCode::Home if n > 0 => { self.selected_log = 0; AppAction::None }
+            KeyCode::End if n > 0 => { self.selected_log = n - 1; AppAction::None }
             KeyCode::Enter | KeyCode::Char('v') if n > 0 => {
                 let id = self.logs[filtered[self.selected_log]].id.clone();
                 self.detail_scroll = 0;
@@ -698,6 +710,57 @@ mod tests {
         for _ in 0..200 { app.handle_key(pg); }
         assert_eq!(app.form.scroll, max,
             "scroll must clamp at max_scroll ({max}), got {}", app.form.scroll);
+    }
+
+    #[test]
+    fn pgdn_pgup_home_end_navigate_logs() {
+        let mut app = App::new(None);
+        app.screen = Screen::DeliveryLogs;
+        // Seed with 50 fake logs so we have enough to page through.
+        app.logs = (0..50)
+            .map(|i| crate::domain::DeliveryLog {
+                id: format!("{i}"),
+                endpoint_id: "ep".into(),
+                endpoint_name: "ep".into(),
+                endpoint_url: "https://x".into(),
+                event_id: format!("evt-{i}"),
+                event_type: "transaction.card.captured".into(),
+                status: crate::api::models::WebhookDeliveryLogStatus::Success,
+                attempt_number: 1,
+                response_status_code: Some(200),
+                duration_ms: 1,
+                error_message: None,
+                created_on: chrono::Utc::now(),
+            })
+            .collect();
+
+        let kp = |code| KeyEvent { code, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+
+        // PgDn jumps 10 rows.
+        app.handle_key(kp(KeyCode::PageDown));
+        assert_eq!(app.selected_log, 10);
+        app.handle_key(kp(KeyCode::PageDown));
+        assert_eq!(app.selected_log, 20);
+
+        // PgUp jumps back 10.
+        app.handle_key(kp(KeyCode::PageUp));
+        assert_eq!(app.selected_log, 10);
+
+        // End jumps to the last row.
+        app.handle_key(kp(KeyCode::End));
+        assert_eq!(app.selected_log, 49);
+
+        // PgDn at the bottom is a no-op (clamped at n-1).
+        app.handle_key(kp(KeyCode::PageDown));
+        assert_eq!(app.selected_log, 49);
+
+        // Home jumps back to row 0.
+        app.handle_key(kp(KeyCode::Home));
+        assert_eq!(app.selected_log, 0);
+
+        // PgUp at the top is a no-op (saturating_sub).
+        app.handle_key(kp(KeyCode::PageUp));
+        assert_eq!(app.selected_log, 0);
     }
 
     #[test]
