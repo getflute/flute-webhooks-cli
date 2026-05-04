@@ -2,7 +2,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Tabs},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState, Tabs},
     Frame,
 };
 
@@ -108,9 +108,8 @@ fn render_endpoints(frame: &mut Frame, app: &App, area: Rect) {
             )),
             Cell::from("[e]dit [d]el"),
         ]);
-        if i == app.selected_endpoint {
-            row.style(Style::default().bg(Color::Rgb(0, 80, 0)).fg(Color::White).bold())
-        } else { row }
+        let _ = i; // index is consumed by TableState; keep loop API compatible.
+        row
     }).collect();
 
     let widths = [
@@ -119,8 +118,10 @@ fn render_endpoints(frame: &mut Frame, app: &App, area: Rect) {
     ];
     let table = Table::new(rows, widths)
         .header(header)
-        .block(Block::default().borders(Borders::ALL));
-    frame.render_widget(table, area);
+        .block(Block::default().borders(Borders::ALL))
+        .row_highlight_style(Style::default().bg(Color::Rgb(0, 80, 0)).fg(Color::White).bold());
+    let mut state = TableState::default().with_selected(Some(app.selected_endpoint));
+    frame.render_stateful_widget(table, area, &mut state);
 }
 
 fn render_logs(frame: &mut Frame, app: &App, area: Rect) {
@@ -166,16 +167,20 @@ fn render_logs(frame: &mut Frame, app: &App, area: Rect) {
             Cell::from(log.endpoint_name.clone()),
             Cell::from("[v]iew"),
         ]);
-        if display_i == app.selected_log {
-            row.style(Style::default().bg(Color::Rgb(0, 80, 0)).fg(Color::White).bold())
-        } else { row }
+        let _ = display_i;
+        row
     }).collect();
 
     let widths = [
         Constraint::Length(18), Constraint::Percentage(22), Constraint::Length(9),
         Constraint::Length(6), Constraint::Length(10), Constraint::Percentage(20), Constraint::Length(10),
     ];
-    frame.render_widget(Table::new(rows, widths).header(header).block(Block::default().borders(Borders::ALL)), chunks[1]);
+    let table = Table::new(rows, widths)
+        .header(header)
+        .block(Block::default().borders(Borders::ALL))
+        .row_highlight_style(Style::default().bg(Color::Rgb(0, 80, 0)).fg(Color::White).bold());
+    let mut state = TableState::default().with_selected(Some(app.selected_log));
+    frame.render_stateful_widget(table, chunks[1], &mut state);
 }
 
 fn endpoint_filter_label(app: &App) -> String {
