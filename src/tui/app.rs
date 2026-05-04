@@ -97,6 +97,11 @@ impl FormState {
     /// Heuristic: each event row contributes ~3 wrapped lines (checkbox +
     /// description + group spacing); the form preamble is ~14 lines. Aim to
     /// keep the active event ~20 lines below the viewport top.
+    ///
+    /// IMPORTANT: never set scroll to u16::MAX or any value far above the
+    /// actual form height — ratatui's Paragraph does internal arithmetic with
+    /// scroll (e.g. line_y - scroll.0) that underflows in debug builds and
+    /// panics, which the panic hook converts into a silent app exit.
     fn auto_scroll(&mut self) {
         const PREAMBLE: u16 = 14;
         const LINES_PER_EVENT: u16 = 3;
@@ -108,8 +113,15 @@ impl FormState {
                 let approx_line = (*i as u16).saturating_mul(LINES_PER_EVENT).saturating_add(PREAMBLE);
                 approx_line.saturating_sub(VISIBLE_OFFSET)
             }
-            // Big number — Paragraph::scroll clamps to the available height.
-            FormField::Cancel | FormField::Submit => u16::MAX,
+            FormField::Cancel | FormField::Submit => {
+                // Bounded value computed from the actual events count; puts the
+                // buttons near the bottom of the viewport without overshooting
+                // the form's true height.
+                let total_form_lines = (self.events.len() as u16)
+                    .saturating_mul(LINES_PER_EVENT)
+                    .saturating_add(PREAMBLE);
+                total_form_lines.saturating_sub(5)
+            }
         };
     }
 }
@@ -579,6 +591,33 @@ mod tests {
         app.handle_key(kp);
         // Manual PgDn step is 15 — two presses gives 30.
         assert_eq!(app.form.scroll, 30);
+    }
+
+    #[test]
+    fn tabbing_to_submit_does_not_crash_with_huge_scroll() {
+        // Reproduces the "down arrow at the bottom quits the app" report:
+        // auto_scroll used to set scroll = u16::MAX for Cancel/Submit, which
+        // caused ratatui's Paragraph to underflow and panic at render time.
+        // The new bounded value must stay well within the form's actual height.
+        let mut app = App::new(None);
+        app.modal = ModalState::CreateWebhook;
+        app.event_types = (0..35)
+            .map(|i| crate::domain::EventTypeMeta {
+                name: format!("event.{i}"),
+                description: format!("desc {i}"),
+                group: "Test".into(),
+            })
+            .collect();
+        app.form = FormState::new_create(app.event_types.len());
+
+        app.form.active_field = FormField::Submit;
+        app.form.auto_scroll();
+        assert!(
+            app.form.scroll < 1000,
+            "scroll must stay bounded for buttons (was {}) — large values panic ratatui",
+            app.form.scroll
+        );
+        assert!(app.form.scroll > 50, "scroll must still reach the bottom of the form");
     }
 
     #[test]
