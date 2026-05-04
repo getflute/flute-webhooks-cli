@@ -380,6 +380,17 @@ impl App {
             KeyCode::Esc => { self.modal = ModalState::None; return AppAction::None; }
             KeyCode::Tab | KeyCode::Down => { self.form.next_field(n); return AppAction::None; }
             KeyCode::BackTab | KeyCode::Up => { self.form.prev_field(n); return AppAction::None; }
+            // Left/Right swap between Cancel and Submit (a horizontal button
+            // group). Ignored elsewhere so they don't accidentally jump out of
+            // text-input fields.
+            KeyCode::Left | KeyCode::Right => {
+                self.form.active_field = match &self.form.active_field {
+                    FormField::Cancel => FormField::Submit,
+                    FormField::Submit => FormField::Cancel,
+                    other => other.clone(),
+                };
+                return AppAction::None;
+            }
             KeyCode::PageDown => {
                 let max = self.form.max_scroll();
                 self.form.scroll = self.form.scroll.saturating_add(15).min(max);
@@ -687,6 +698,40 @@ mod tests {
         for _ in 0..200 { app.handle_key(pg); }
         assert_eq!(app.form.scroll, max,
             "scroll must clamp at max_scroll ({max}), got {}", app.form.scroll);
+    }
+
+    #[test]
+    fn left_right_swap_cancel_and_submit() {
+        let mut app = App::new(None);
+        app.modal = ModalState::CreateWebhook;
+        app.form = FormState::new_create(0);
+        app.form.active_field = FormField::Cancel;
+
+        let right = KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let left = KeyEvent { code: KeyCode::Left, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+
+        app.handle_key(right);
+        assert_eq!(app.form.active_field, FormField::Submit);
+        app.handle_key(left);
+        assert_eq!(app.form.active_field, FormField::Cancel);
+        // Pressing both directions toggles, so a second press of the same
+        // key flips back.
+        app.handle_key(right);
+        app.handle_key(right);
+        assert_eq!(app.form.active_field, FormField::Cancel);
+    }
+
+    #[test]
+    fn left_right_does_not_jump_out_of_text_field() {
+        // Arrow keys on URL/Name must NOT move focus — that would feel like
+        // the cursor escaped while typing.
+        let mut app = App::new(None);
+        app.modal = ModalState::CreateWebhook;
+        app.form = FormState::new_create(0);
+        app.form.active_field = FormField::Url;
+        let right = KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        app.handle_key(right);
+        assert_eq!(app.form.active_field, FormField::Url);
     }
 
     #[test]
