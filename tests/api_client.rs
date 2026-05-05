@@ -75,3 +75,57 @@ async fn list_delivery_logs_round_trips() {
     assert_eq!(r.total, Some(1));
 }
 
+/// On HTTP 401, the client must invalidate its cached token, fetch a fresh
+/// one, and retry the same request. After the retry it should return success
+/// (or whatever the second response is) without surfacing the 401 to callers.
+#[tokio::test]
+async fn refreshes_token_and_retries_once_on_401() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct CountingFetcher { calls: AtomicUsize }
+    #[async_trait::async_trait]
+    impl Fetcher for CountingFetcher {
+        async fn fetch(&self) -> anyhow::Result<(String, Duration)> {
+            let n = self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok((format!("token-{n}"), Duration::from_secs(3600)))
+        }
+    }
+
+    let server = MockServer::start().await;
+
+    // First call to GET /v2/webhooks/endpoints returns 401.
+    Mock::given(method("GET")).and(path("/v2/webhooks/endpoints"))
+        .respond_with(ResponseTemplate::new(401))
+        .up_to_n_times(1)
+        .mount(&server).await;
+
+    // Subsequent calls return 200 with one endpoint. Mounted second so
+    // wiremock matches the up_to_n_times(1) entry first.
+    Mock::given(method("GET")).and(path("/v2/webhooks/endpoints"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": [{
+                "id":"00000000-0000-0000-0000-000000000099","name":"after-refresh",
+                "endpointUrl":"https://x","status":"Active","eventTypes":["ping"],
+                "createdOn":"2026-05-04T12:00:00Z","modifiedOn":"2026-05-04T12:00:00Z"
+            }]
+        })))
+        .mount(&server).await;
+
+    let counter = Arc::new(CountingFetcher { calls: AtomicUsize::new(0) });
+    let api = ApiClient {
+        base_url: server.uri(),
+        http: reqwest::Client::new(),
+        tokens: TokenStore::new(counter.clone()),
+    };
+
+    // The 401 must NOT be surfaced — the retry succeeded.
+    let r = api.list_endpoints().await.expect("list_endpoints should succeed via retry");
+    let data = r.data.expect("data should be present after retry");
+    assert_eq!(data.len(), 1);
+    assert_eq!(data[0].name.as_deref(), Some("after-refresh"));
+
+    // Token was fetched twice: once originally, once after the 401 invalidation.
+    assert_eq!(counter.calls.load(Ordering::SeqCst), 2,
+        "expected exactly 2 token fetches (initial + post-401 refresh)");
+}
+

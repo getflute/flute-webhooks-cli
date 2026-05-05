@@ -37,6 +37,15 @@ impl TokenStore {
         *guard = Some(cached);
         Ok(bearer)
     }
+
+    /// Discard the cached token. The next [`bearer`](Self::bearer) call will
+    /// fetch fresh credentials. Used for reactive refresh when the server
+    /// returns 401 (clock skew, revocation, server restart) so a single stale
+    /// cache entry doesn't keep failing requests.
+    pub async fn invalidate(&self) {
+        let mut guard = self.inner.lock().await;
+        *guard = None;
+    }
 }
 
 pub struct OAuth2Fetcher {
@@ -94,6 +103,17 @@ mod tests {
         assert_eq!(store.bearer().await.unwrap(), "token-0");
         assert_eq!(store.bearer().await.unwrap(), "token-0");
         assert_eq!(fetcher.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn invalidate_forces_a_refetch_on_next_bearer_call() {
+        let fetcher = Arc::new(CountingFetcher { calls: AtomicUsize::new(0), ttl: Duration::from_secs(3600) });
+        let store = TokenStore::new(fetcher.clone());
+        assert_eq!(store.bearer().await.unwrap(), "token-0");
+        // Cache is still valid by TTL — without invalidate this would reuse token-0.
+        store.invalidate().await;
+        assert_eq!(store.bearer().await.unwrap(), "token-1");
+        assert_eq!(fetcher.calls.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]

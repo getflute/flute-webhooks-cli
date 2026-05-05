@@ -157,6 +157,8 @@ Implementation plan: `docs/superpowers/plans/2026-04-30-flute-webhooks-tui.md`.
 
 **The polling cadence seems slow after an error** — that's the exponential backoff. On consecutive 401/403/404/5xx (or transport) failures the poll interval doubles each time, capped at 30 seconds (or your configured base interval if it's larger — backoff never polls faster than your normal cadence). The counter resets to zero on the first successful poll. The error modal stays up so you can see what's happening.
 
+**Token refresh** — bearer tokens are cached in memory and proactively refreshed 60 seconds before their advertised expiry. If the server returns a 401 anyway (clock skew, server restart, revocation), the client invalidates the cache, fetches a fresh token, and retries the original request once. Only requests that fail twice in a row are surfaced as errors.
+
 ## License
 
 MIT.
