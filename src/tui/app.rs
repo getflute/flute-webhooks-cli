@@ -537,7 +537,10 @@ pub enum ActionOutcome {
     Toast(String),
     Created { secret: String },
     Error(String),
-    DeliveryDetail(crate::api::models::DeliveryLogDetailDto),
+    // Boxed so this variant doesn't bloat the enum's stack size — the DTO is
+    // ~360 bytes vs the other variants at ~24 bytes, which clippy correctly
+    // flags as `large_enum_variant`.
+    DeliveryDetail(Box<crate::api::models::DeliveryLogDetailDto>),
 }
 
 impl App {
@@ -552,7 +555,7 @@ impl App {
                 // (and see the correlation id). Esc on the main screen dismisses it.
                 self.last_error = Some(msg);
             }
-            ActionOutcome::DeliveryDetail(d) => self.set_delivery_detail(d),
+            ActionOutcome::DeliveryDetail(d) => self.set_delivery_detail(*d),
         }
     }
 }

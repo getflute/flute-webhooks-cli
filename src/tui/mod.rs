@@ -94,14 +94,14 @@ async fn event_loop(
         }
         while let Ok(o) = outcome_rx.try_recv() { app.apply_outcome(o); }
 
-        if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                let action = app.handle_key(key);
-                if !matches!(action, AppAction::None) {
-                    if let Err(tokio::sync::mpsc::error::TrySendError::Full(_)) = action_tx.try_send(action) {
-                        app.show_toast("Busy — try again in a moment");
-                    }
-                }
+        if event::poll(Duration::from_millis(100))?
+            && let Event::Key(key) = event::read()?
+        {
+            let action = app.handle_key(key);
+            if !matches!(action, AppAction::None)
+                && let Err(tokio::sync::mpsc::error::TrySendError::Full(_)) = action_tx.try_send(action)
+            {
+                app.show_toast("Busy — try again in a moment");
             }
         }
         app.tick_toast();
@@ -132,7 +132,7 @@ async fn execute_action(api: &ApiClient, action: AppAction,
             Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
         },
         AppAction::OpenDetails(id) => match api.get_delivery_log(&id).await {
-            Ok(d) => { let _ = outcome_tx.send(ActionOutcome::DeliveryDetail(d)).await; }
+            Ok(d) => { let _ = outcome_tx.send(ActionOutcome::DeliveryDetail(Box::new(d))).await; }
             Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
         },
         AppAction::None => {}
