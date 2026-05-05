@@ -3,6 +3,7 @@ pub mod auth;
 pub mod cli;
 pub mod config;
 pub mod domain;
+pub mod forward;
 pub mod poller;
 pub mod tui;
 
@@ -35,8 +36,75 @@ pub fn run() -> anyhow::Result<()> {
             cli::Command::Tui => tui::run(&profile).await,
             cli::Command::Auth(cli::AuthCommand::Login) => auth_login(&profile).await,
             cli::Command::Auth(cli::AuthCommand::Token) => auth_print_token(&profile).await,
+            cli::Command::Listen { forward_to } => listen(&profile, &forward_to).await,
         }
     })
+}
+
+/// Headless polling mode: every new successful delivery seen on the API gets
+/// POST'd to `forward_to` with the original headers and JSON body. Runs in the
+/// foreground until Ctrl-C. Uses the same OAuth2 + ApiClient stack as the TUI
+/// — the only difference is the absence of the ratatui front-end.
+async fn listen(profile: &str, forward_to: &str) -> anyhow::Result<()> {
+    use std::collections::HashSet;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    let p = config::Profile::by_name(profile)
+        .ok_or_else(|| anyhow::anyhow!("unknown profile: {profile}"))?;
+    let cfg = config::load_or_default();
+    let secs = config::validate_poll_interval(cfg.poll_interval_seconds).seconds;
+
+    let (id, secret) = auth::keychain::load_with_env_fallback(profile)?
+        .ok_or_else(|| anyhow::anyhow!("no credentials for [{profile}]; run `flute-webhook auth login`"))?;
+    let http = reqwest::Client::builder().timeout(Duration::from_secs(15)).build()?;
+    let fetcher = Arc::new(auth::token::OAuth2Fetcher {
+        oauth_url: p.oauth_url.clone(),
+        client_id: id, client_secret: secret, http: http.clone(),
+    });
+    let api = api::ApiClient {
+        base_url: p.api_base_url.clone(),
+        http: http.clone(),
+        tokens: auth::token::TokenStore::new(fetcher),
+    };
+
+    println!("flute-webhook listen — profile=[{profile}] forwarding to {forward_to}");
+    println!("Ctrl-C to stop.");
+
+    // Prime seen_log_ids with the first page of currently-known logs so we
+    // don't replay history on startup. From here on we only forward genuinely
+    // new successful arrivals.
+    let mut seen: HashSet<String> = match api.list_delivery_logs(500).await {
+        Ok(r) => r.items.unwrap_or_default().into_iter().map(|l| l.id).collect(),
+        Err(e) => {
+            eprintln!("warm-up fetch failed: {e}");
+            HashSet::new()
+        }
+    };
+
+    loop {
+        tokio::time::sleep(Duration::from_secs(secs)).await;
+
+        match api.list_delivery_logs(500).await {
+            Ok(resp) => {
+                let logs = resp.items.unwrap_or_default();
+                for l in logs.iter() {
+                    let success = matches!(l.status, api::models::WebhookDeliveryLogStatus::Success);
+                    if success && !seen.contains(&l.id) {
+                        let prefix = l.id.get(..8.min(l.id.len())).unwrap_or("");
+                        match forward::forward_log(&http, &api, &l.id, forward_to).await {
+                            Ok(_) => println!("forwarded {prefix}… ({})", l.event_type.clone().unwrap_or_default()),
+                            Err(e) => eprintln!("forward {prefix}… failed: {e}"),
+                        }
+                    }
+                }
+                for l in logs { seen.insert(l.id); }
+            }
+            Err(e) => {
+                eprintln!("poll failed: {e}");
+            }
+        }
+    }
 }
 
 /// Route tracing output based on (is_tui, debug):

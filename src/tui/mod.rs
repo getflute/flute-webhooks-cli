@@ -86,7 +86,14 @@ async fn event_loop(
 
         while let Ok(ev) = events_rx.try_recv() {
             match ev {
-                PollerEvent::Snapshot(s) => app.apply_snapshot(s.endpoints, s.logs, s.event_types),
+                PollerEvent::Snapshot(s) => {
+                    let queued = app.apply_snapshot(s.endpoints, s.logs, s.event_types);
+                    // Auto-forward actions emitted by apply_snapshot when the
+                    // listener is enabled and a new successful log appeared.
+                    for action in queued {
+                        let _ = action_tx.try_send(action);
+                    }
+                }
                 // Surface poller errors in the persistent error banner so the user has time
                 // to read them (Esc on the main screen dismisses).
                 PollerEvent::Error(e) => app.last_error = Some(format!("Poll error: {e}")),
@@ -135,6 +142,17 @@ async fn execute_action(api: &ApiClient, action: AppAction,
             Ok(d) => { let _ = outcome_tx.send(ActionOutcome::DeliveryDetail(Box::new(d))).await; }
             Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
         },
+        AppAction::ForwardLog { log_id, url } => {
+            // Forward errors are best-effort — they emit warn-level tracing
+            // (visible with --debug or RUST_LOG=flute_webhook=warn) but do not
+            // surface to the user as modal errors. Listeners go up and down
+            // and we don't want a flaky dev server to spam red banners.
+            if let Err(e) = crate::forward::forward_log(&api.http, api, &log_id, &url).await {
+                let _ = outcome_tx.send(ActionOutcome::Toast(format!(
+                    "Forward failed: {e}"
+                ))).await;
+            }
+        }
         AppAction::None => {}
     }
 }

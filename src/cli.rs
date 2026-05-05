@@ -24,6 +24,15 @@ pub enum Command {
     /// Auth subcommands.
     #[command(subcommand)]
     Auth(AuthCommand),
+
+    /// Poll the Flute webhook delivery logs and forward every NEW successful
+    /// delivery's headers + body to a local URL (e.g. http://127.0.0.1:3000).
+    /// Runs in the foreground until Ctrl-C.
+    Listen {
+        /// Local URL to POST forwarded payloads to.
+        #[arg(long)]
+        forward_to: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]

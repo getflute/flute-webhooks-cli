@@ -1,5 +1,6 @@
 use crate::api::models::{WebhookDeliveryLogStatus, WebhookEndpointStatus};
 use crate::domain::{DeliveryLog, Endpoint, EventTypeMeta};
+use std::collections::HashSet;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Screen { Endpoints, DeliveryLogs }
@@ -12,6 +13,48 @@ pub enum ModalState {
     DeleteWebhook(usize),
     WebhookCreated(String), // signing secret
     DeliveryDetails(String), // delivery log id (for fetching detail on demand)
+    ListenerConfig,         // configure local-listener URL + on/off
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ListenerField {
+    Url,
+    Enabled,
+    Cancel,
+    Save,
+}
+
+#[derive(Clone, Debug)]
+pub struct ListenerForm {
+    pub url: String,
+    pub enabled: bool,
+    pub active_field: ListenerField,
+}
+
+impl ListenerForm {
+    pub fn from_app(url: Option<String>, enabled: bool) -> Self {
+        Self {
+            url: url.unwrap_or_default(),
+            enabled,
+            active_field: ListenerField::Url,
+        }
+    }
+    pub fn next_field(&mut self) {
+        self.active_field = match self.active_field {
+            ListenerField::Url => ListenerField::Enabled,
+            ListenerField::Enabled => ListenerField::Cancel,
+            ListenerField::Cancel => ListenerField::Save,
+            ListenerField::Save => ListenerField::Url,
+        };
+    }
+    pub fn prev_field(&mut self) {
+        self.active_field = match self.active_field {
+            ListenerField::Url => ListenerField::Save,
+            ListenerField::Enabled => ListenerField::Url,
+            ListenerField::Cancel => ListenerField::Enabled,
+            ListenerField::Save => ListenerField::Cancel,
+        };
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -165,6 +208,16 @@ pub struct App {
     pub toast_timer: u8,
 
     pub delivery_detail: Option<crate::api::models::DeliveryLogDetailDto>,
+
+    // Local-listener config: forward incoming successful webhook deliveries
+    // to a user-supplied URL. Session-only — not persisted to ~/.flute.
+    pub listener_url: Option<String>,
+    pub listener_enabled: bool,
+    pub listener_form: ListenerForm,
+    /// Log IDs we've already considered for forwarding. Initialised from the
+    /// snapshot at the moment the listener is enabled so we don't blast the
+    /// listener with the entire backlog.
+    pub seen_log_ids: HashSet<String>,
 }
 
 impl App {
@@ -189,6 +242,10 @@ impl App {
             toast_message: None,
             toast_timer: 0,
             delivery_detail: None,
+            listener_url: None,
+            listener_enabled: false,
+            listener_form: ListenerForm::from_app(None, false),
+            seen_log_ids: HashSet::new(),
         }
     }
 
@@ -212,7 +269,38 @@ impl App {
 
     pub fn clear_delivery_detail(&mut self) { self.delivery_detail = None; }
 
-    pub fn apply_snapshot(&mut self, endpoints: Vec<Endpoint>, logs: Vec<DeliveryLog>, event_types: Vec<EventTypeMeta>) {
+    /// Apply a fresh poller snapshot to the app state. Returns any
+    /// auto-forward actions that should be sent to the action executor —
+    /// produced when the listener is enabled and a previously-unseen
+    /// successful delivery log appears in the snapshot.
+    pub fn apply_snapshot(
+        &mut self,
+        endpoints: Vec<Endpoint>,
+        logs: Vec<DeliveryLog>,
+        event_types: Vec<EventTypeMeta>,
+    ) -> Vec<AppAction> {
+        let mut forwards = Vec::new();
+        if self.listener_enabled
+            && let Some(url) = self.listener_url.clone()
+        {
+            for log in &logs {
+                if log.status == WebhookDeliveryLogStatus::Success
+                    && !self.seen_log_ids.contains(&log.id)
+                {
+                    forwards.push(AppAction::ForwardLog {
+                        log_id: log.id.clone(),
+                        url: url.clone(),
+                    });
+                }
+            }
+        }
+        // Always remember every log id we've seen (even when the listener is
+        // off) so toggling it on later starts forwarding from the next snapshot,
+        // not from the entire historical backlog.
+        for log in &logs {
+            self.seen_log_ids.insert(log.id.clone());
+        }
+
         self.endpoints = endpoints;
         self.logs = logs;
         if self.event_types.is_empty() && !event_types.is_empty() {
@@ -221,6 +309,23 @@ impl App {
         if self.selected_endpoint >= self.endpoints.len() && !self.endpoints.is_empty() {
             self.selected_endpoint = self.endpoints.len() - 1;
         }
+        forwards
+    }
+
+    /// Persist the listener-config form to the live App fields. When enabling
+    /// the listener for the first time, prime `seen_log_ids` with the current
+    /// log ids so the listener won't replay history — only future arrivals.
+    pub fn save_listener_config(&mut self) {
+        let url = self.listener_form.url.trim().to_string();
+        let enabled = self.listener_form.enabled && !url.is_empty();
+        self.listener_url = if url.is_empty() { None } else { Some(url) };
+        let was_enabled = self.listener_enabled;
+        self.listener_enabled = enabled;
+        if enabled && !was_enabled {
+            self.seen_log_ids = self.logs.iter().map(|l| l.id.clone()).collect();
+        }
+        self.modal = ModalState::None;
+        self.show_toast(if enabled { "Listener enabled" } else { "Listener disabled" });
     }
 
     pub fn cadence_mode(&self) -> crate::poller::CadenceMode {
@@ -240,6 +345,8 @@ pub enum AppAction {
     Update(String, crate::api::models::UpdateWebhookEndpointRequest),
     Delete(String),
     OpenDetails(String),
+    /// Forward this delivery log's headers + payload to a target URL.
+    ForwardLog { log_id: String, url: String },
 }
 
 impl App {
@@ -256,6 +363,7 @@ impl App {
             ModalState::DeleteWebhook(idx) => self.handle_delete_key(key, idx),
             ModalState::WebhookCreated(_) => self.handle_created_key(key),
             ModalState::DeliveryDetails(_) => self.handle_details_key(key),
+            ModalState::ListenerConfig => self.handle_listener_key(key),
         }
     }
 
@@ -357,8 +465,81 @@ impl App {
                 self.filter_endpoint = 0; self.filter_event = 0; self.filter_status = 0;
                 self.selected_log = 0; AppAction::None
             }
+            // Open the listener-config modal: enable/disable + set URL.
+            KeyCode::Char('l') => {
+                self.listener_form = ListenerForm::from_app(self.listener_url.clone(), self.listener_enabled);
+                self.modal = ModalState::ListenerConfig;
+                AppAction::None
+            }
+            // Trigger one-shot forward of the selected log to the configured
+            // listener URL. Only meaningful for successful deliveries (the
+            // failed ones don't have a payload that's worth replaying).
+            KeyCode::Char('t') if n > 0 => {
+                let (log_id, log_status) = {
+                    let log = &self.logs[filtered[self.selected_log]];
+                    (log.id.clone(), log.status)
+                };
+                if log_status != WebhookDeliveryLogStatus::Success {
+                    self.show_toast("Trigger only works on successful deliveries");
+                    return AppAction::None;
+                }
+                let Some(url) = self.listener_url.clone() else {
+                    self.show_toast("No listener URL configured (press [l] to set one)");
+                    return AppAction::None;
+                };
+                let prefix = log_id.get(..8.min(log_id.len())).unwrap_or("").to_string();
+                self.show_toast(format!("Forwarding {prefix} -> {url}"));
+                AppAction::ForwardLog { log_id, url }
+            }
             _ => AppAction::None,
         }
+    }
+
+    fn handle_listener_key(&mut self, key: KeyEvent) -> AppAction {
+        match key.code {
+            KeyCode::Esc => { self.modal = ModalState::None; return AppAction::None; }
+            KeyCode::Tab | KeyCode::Down => {
+                self.listener_form.next_field();
+                return AppAction::None;
+            }
+            KeyCode::BackTab | KeyCode::Up => {
+                self.listener_form.prev_field();
+                return AppAction::None;
+            }
+            KeyCode::Enter => {
+                match self.listener_form.active_field {
+                    ListenerField::Cancel => self.modal = ModalState::None,
+                    ListenerField::Save => self.save_listener_config(),
+                    ListenerField::Enabled => self.listener_form.enabled = !self.listener_form.enabled,
+                    ListenerField::Url => self.listener_form.next_field(),
+                }
+                return AppAction::None;
+            }
+            KeyCode::Char(' ') => {
+                if let ListenerField::Enabled = self.listener_form.active_field {
+                    self.listener_form.enabled = !self.listener_form.enabled;
+                    return AppAction::None;
+                }
+                if let ListenerField::Url = self.listener_form.active_field {
+                    self.listener_form.url.push(' ');
+                    return AppAction::None;
+                }
+            }
+            KeyCode::Backspace => {
+                if let ListenerField::Url = self.listener_form.active_field {
+                    self.listener_form.url.pop();
+                    return AppAction::None;
+                }
+            }
+            KeyCode::Char(c) => {
+                if let ListenerField::Url = self.listener_form.active_field {
+                    self.listener_form.url.push(c);
+                    return AppAction::None;
+                }
+            }
+            _ => {}
+        }
+        AppAction::None
     }
 
     pub fn filtered_log_indices(&self) -> Vec<usize> {
@@ -824,6 +1005,125 @@ mod tests {
         assert_eq!(app.cadence_mode(), crate::poller::CadenceMode::Backoff);
         app.modal = ModalState::None;
         assert_eq!(app.cadence_mode(), crate::poller::CadenceMode::Active);
+    }
+
+    fn fake_log(id: &str, status: WebhookDeliveryLogStatus) -> crate::domain::DeliveryLog {
+        crate::domain::DeliveryLog {
+            id: id.into(),
+            endpoint_id: "ep-1".into(),
+            endpoint_name: "ep".into(),
+            endpoint_url: "https://x".into(),
+            event_id: format!("evt-{id}"),
+            event_type: "transaction.card.captured".into(),
+            status,
+            attempt_number: 1,
+            response_status_code: Some(200),
+            duration_ms: 1,
+            error_message: None,
+            created_on: chrono::Utc::now(),
+        }
+    }
+
+    #[test]
+    fn apply_snapshot_emits_forward_for_new_successful_logs_when_listener_enabled() {
+        let mut app = App::new(None);
+        app.listener_url = Some("http://127.0.0.1:3000/webhook".into());
+        app.listener_enabled = true;
+        // Pretend logs "old-1" was already seen — no forward expected for it.
+        app.seen_log_ids.insert("old-1".into());
+
+        let new_logs = vec![
+            fake_log("old-1", WebhookDeliveryLogStatus::Success),  // already seen
+            fake_log("new-success", WebhookDeliveryLogStatus::Success),
+            fake_log("new-failed", WebhookDeliveryLogStatus::Failure),
+        ];
+        let actions = app.apply_snapshot(vec![], new_logs, vec![]);
+
+        // Exactly one forward — for the new successful log.
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            AppAction::ForwardLog { log_id, url } => {
+                assert_eq!(log_id, "new-success");
+                assert_eq!(url, "http://127.0.0.1:3000/webhook");
+            }
+            other => panic!("unexpected action: {other:?}"),
+        }
+        // All three IDs are now marked seen so a re-poll won't re-forward.
+        assert!(app.seen_log_ids.contains("old-1"));
+        assert!(app.seen_log_ids.contains("new-success"));
+        assert!(app.seen_log_ids.contains("new-failed"));
+    }
+
+    #[test]
+    fn apply_snapshot_emits_no_forwards_when_listener_disabled() {
+        let mut app = App::new(None);
+        app.listener_url = Some("http://x".into());
+        app.listener_enabled = false; // off
+        let logs = vec![fake_log("a", WebhookDeliveryLogStatus::Success)];
+        let actions = app.apply_snapshot(vec![], logs, vec![]);
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn save_listener_config_primes_seen_ids_so_history_is_not_replayed() {
+        let mut app = App::new(None);
+        // Three pre-existing logs sitting in the snapshot.
+        app.logs = vec![
+            fake_log("a", WebhookDeliveryLogStatus::Success),
+            fake_log("b", WebhookDeliveryLogStatus::Success),
+            fake_log("c", WebhookDeliveryLogStatus::Success),
+        ];
+        app.listener_form.url = "http://127.0.0.1:3000/webhook".into();
+        app.listener_form.enabled = true;
+        app.save_listener_config();
+
+        // All historical IDs are now in seen_log_ids — a poll containing the
+        // same three logs should produce zero forwards.
+        let actions = app.apply_snapshot(vec![], app.logs.clone(), vec![]);
+        assert!(actions.is_empty(), "history must not be replayed on enable");
+
+        // A genuinely new log AFTER enabling must still be forwarded.
+        let mut next_logs = app.logs.clone();
+        next_logs.push(fake_log("d", WebhookDeliveryLogStatus::Success));
+        let actions = app.apply_snapshot(vec![], next_logs, vec![]);
+        assert_eq!(actions.len(), 1);
+    }
+
+    #[test]
+    fn t_on_successful_log_emits_forward_when_listener_url_set() {
+        let mut app = App::new(None);
+        app.screen = Screen::DeliveryLogs;
+        app.logs = vec![fake_log("the-log", WebhookDeliveryLogStatus::Success)];
+        app.listener_url = Some("http://127.0.0.1:9000/hook".into());
+        let kp = KeyEvent { code: KeyCode::Char('t'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        match app.handle_key(kp) {
+            AppAction::ForwardLog { log_id, url } => {
+                assert_eq!(log_id, "the-log");
+                assert_eq!(url, "http://127.0.0.1:9000/hook");
+            }
+            other => panic!("expected ForwardLog, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn t_without_listener_url_toasts_instead_of_forwarding() {
+        let mut app = App::new(None);
+        app.screen = Screen::DeliveryLogs;
+        app.logs = vec![fake_log("the-log", WebhookDeliveryLogStatus::Success)];
+        // listener_url is None
+        let kp = KeyEvent { code: KeyCode::Char('t'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let action = app.handle_key(kp);
+        assert!(matches!(action, AppAction::None));
+        assert!(app.toast_message.is_some());
+    }
+
+    #[test]
+    fn l_opens_listener_modal_from_logs_screen() {
+        let mut app = App::new(None);
+        app.screen = Screen::DeliveryLogs;
+        let kp = KeyEvent { code: KeyCode::Char('l'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        app.handle_key(kp);
+        assert_eq!(app.modal, ModalState::ListenerConfig);
     }
 
     #[test]

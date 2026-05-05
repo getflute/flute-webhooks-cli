@@ -53,6 +53,16 @@ cargo run -- auth token
 
 Prints the current bearer JWT (useful for `curl` smoke tests). If credentials aren't stored, you'll get an actionable error pointing you back to `auth login`.
 
+### Headless listen mode
+
+Without launching the TUI, poll the API and forward every NEW successful delivery to a local URL:
+
+```bash
+flute-webhook listen --forward-to http://127.0.0.1:3000/webhook
+```
+
+It runs in the foreground, prints one line per forward, and exits on Ctrl-C. Useful for piping payloads into a local dev server. The TUI's `[l]istener` modal does the same thing in-app.
+
 ### 3. Launch the TUI
 
 ```bash
@@ -69,7 +79,8 @@ cargo run -- --profile production tui
 |---|---|
 | **Top level** | `Tab` switch tabs · `q` quit · `Ctrl-C` quit anywhere |
 | **Endpoints tab** | `↑↓`/`jk` navigate · `c` create · `e`/`Enter` edit · `d` delete |
-| **Delivery Logs tab** | `↑↓`/`jk` navigate · `v`/`Enter` view details · `1` cycle endpoint filter · `2` cycle event-type filter · `3` cycle status filter · `s` toggle sort · `x` clear filters |
+| **Delivery Logs tab** | `↑↓`/`jk` navigate · `PgUp`/`PgDn`/`Home`/`End` jump · `v`/`Enter` view details · `t` trigger forward · `l` listener config · `1` cycle endpoint filter · `2` cycle event-type filter · `3` cycle status filter · `s` toggle sort · `x` clear filters |
+| **Listener modal** | `Tab`/`↑↓` move between fields · type the URL · `Space` toggle Enabled · `Enter` activate · `Esc` cancel |
 | **Form modal (create/edit)** | `Tab`/`↑↓` move between fields · `Space`/`Enter` toggle controls · `PgUp`/`PgDn` scroll the event list · `Esc` cancel |
 | **Delete confirm** | `y`/`Enter` delete · `n`/`Esc` cancel |
 | **Details modal** | `↑↓`/`jk` scroll · `PgUp`/`PgDn` page · `Esc`/`Enter`/`q` close |

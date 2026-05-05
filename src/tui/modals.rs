@@ -7,7 +7,7 @@ use ratatui::{
 use std::collections::BTreeMap;
 
 use crate::api::models::WebhookEndpointStatus;
-use crate::tui::app::{App, FormField};
+use crate::tui::app::{App, FormField, ListenerField};
 use crate::tui::ui::centered_rect;
 
 pub fn render_create_modal(frame: &mut Frame, app: &App) {
@@ -335,6 +335,90 @@ pub fn render_details_modal(frame: &mut Frame, app: &App, log_id: &str) {
     let para = Paragraph::new(lines)
         .wrap(Wrap { trim: false })
         .scroll((app.detail_scroll, 0))
+        .style(Style::default().bg(Color::Black));
+    frame.render_widget(para, inner);
+}
+
+pub fn render_listener_modal(frame: &mut Frame, app: &App) {
+    let area = centered_rect(60, 50, frame.area());
+    frame.render_widget(Clear, area);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Local Listener ")
+        .title_style(Style::default().fg(Color::Cyan).bold())
+        .border_style(Style::default().fg(Color::Cyan))
+        .style(Style::default().bg(Color::Black));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let f = &app.listener_form;
+    let url_active = f.active_field == ListenerField::Url;
+    let enabled_active = f.active_field == ListenerField::Enabled;
+    let cancel_active = f.active_field == ListenerField::Cancel;
+    let save_active = f.active_field == ListenerField::Save;
+
+    let label_style = |active: bool| {
+        if active { Style::default().fg(Color::Cyan).bold() } else { Style::default().fg(Color::White) }
+    };
+    let pointer = |active: bool| -> Span<'static> {
+        if active { Span::styled("▸ ", Style::default().fg(Color::Cyan)) } else { Span::raw("  ") }
+    };
+
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::from(Span::styled(
+        "Forward successful incoming webhook deliveries to a local URL.",
+        Style::default().fg(Color::Green),
+    )));
+    lines.push(Line::raw(""));
+
+    // URL field
+    lines.push(Line::from(Span::styled("Listener URL", label_style(url_active))));
+    let cursor = if url_active { "█" } else { "" };
+    let display = if f.url.is_empty() && !url_active {
+        Span::styled("http://127.0.0.1:3000/webhook", Style::default().fg(Color::Green))
+    } else {
+        Span::styled(format!("{}{cursor}", f.url), Style::default().fg(Color::White))
+    };
+    lines.push(Line::from(vec![Span::raw(" "), pointer(url_active), display]));
+    lines.push(Line::from(Span::styled(
+        "  POST'd with the original headers and JSON payload.",
+        Style::default().fg(Color::Green),
+    )));
+    lines.push(Line::raw(""));
+
+    // Enabled toggle
+    lines.push(Line::from(Span::styled("Enabled", label_style(enabled_active))));
+    let mark = if f.enabled { "[x]" } else { "[ ]" };
+    lines.push(Line::from(vec![
+        Span::raw(" "),
+        pointer(enabled_active),
+        Span::styled(
+            format!("{mark} Auto-forward all new successful deliveries"),
+            if f.enabled { Style::default().fg(Color::Green) } else { Style::default().fg(Color::White) },
+        ),
+    ]));
+    lines.push(Line::raw(""));
+
+    // Buttons
+    let cancel_style = if cancel_active {
+        Style::default().fg(Color::Black).bg(Color::White).bold()
+    } else {
+        Style::default().fg(Color::White)
+    };
+    let save_style = if save_active {
+        Style::default().fg(Color::Black).bg(Color::Cyan).bold()
+    } else {
+        Style::default().fg(Color::Cyan)
+    };
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled(" Cancel ", cancel_style),
+        Span::raw("  "),
+        Span::styled(" Save ", save_style),
+    ]));
+
+    let para = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
         .style(Style::default().bg(Color::Black));
     frame.render_widget(para, inner);
 }

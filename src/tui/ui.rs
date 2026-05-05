@@ -37,6 +37,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         ModalState::DeleteWebhook(idx) => modals::render_delete_modal(frame, app, *idx),
         ModalState::WebhookCreated(secret) => modals::render_created_modal(frame, secret),
         ModalState::DeliveryDetails(id) => modals::render_details_modal(frame, app, id),
+        ModalState::ListenerConfig => modals::render_listener_modal(frame, app),
     }
 
     if let Some(msg) = &app.toast_message { render_toast(frame, msg); }
@@ -158,6 +159,11 @@ fn render_logs(frame: &mut Frame, app: &App, area: Rect) {
             WebhookDeliveryLogStatus::Failure => ("Failed", Color::Red),
         };
         let http = log.response_status_code.map(|s| s.to_string()).unwrap_or_else(|| "—".into());
+        let actions_label = if log.status == WebhookDeliveryLogStatus::Success && app.listener_url.is_some() {
+            "[v]iew [t]rig"
+        } else {
+            "[v]iew"
+        };
         let row = Row::new(vec![
             Cell::from(log.created_on.format("%m/%d/%y %H:%M:%S").to_string()),
             Cell::from(Span::styled(log.event_type.clone(), Style::default().fg(Color::Blue))),
@@ -165,7 +171,7 @@ fn render_logs(frame: &mut Frame, app: &App, area: Rect) {
             Cell::from(http),
             Cell::from(format!("{}ms", log.duration_ms)),
             Cell::from(log.endpoint_name.clone()),
-            Cell::from("[v]iew"),
+            Cell::from(actions_label),
         ]);
         let _ = display_i;
         row
@@ -173,7 +179,7 @@ fn render_logs(frame: &mut Frame, app: &App, area: Rect) {
 
     let widths = [
         Constraint::Length(18), Constraint::Percentage(22), Constraint::Length(9),
-        Constraint::Length(6), Constraint::Length(10), Constraint::Percentage(20), Constraint::Length(10),
+        Constraint::Length(6), Constraint::Length(10), Constraint::Percentage(18), Constraint::Length(15),
     ];
     let table = Table::new(rows, widths)
         .header(header)
@@ -199,11 +205,12 @@ fn render_help_bar(frame: &mut Frame, app: &App, area: Rect) {
     let help = match (&app.modal, &app.screen) {
         (ModalState::None, _) if app.last_error.is_some() => "Enter/Esc: dismiss error",
         (ModalState::None, Screen::Endpoints) => "Tab: switch | ↑↓/jk: nav | c: create | e: edit | d: delete | q: quit",
-        (ModalState::None, Screen::DeliveryLogs) => "Tab: switch | ↑↓/jk: nav | PgUp/PgDn/Home/End: jump | v: details | 1-3: filters | s: sort | x: clear | q: quit",
+        (ModalState::None, Screen::DeliveryLogs) => "Tab: switch | ↑↓/jk: nav | v: details | t: trigger | l: listener | 1-3: filters | s: sort | x: clear | q: quit",
         (ModalState::CreateWebhook | ModalState::EditWebhook(_), _) => "Tab/↑↓: fields | ←→: Cancel/Submit | Space: toggle | Enter: activate | PgUp/PgDn: scroll | Esc: cancel",
         (ModalState::DeleteWebhook(_), _) => "y/Enter: confirm | n/Esc: cancel",
         (ModalState::WebhookCreated(_), _) => "Enter/Esc: done",
         (ModalState::DeliveryDetails(_), _) => "↑↓/jk/PgUp/PgDn: scroll | Esc/Enter/q: close",
+        (ModalState::ListenerConfig, _) => "Tab/↑↓: fields | type URL | Space: toggle | Enter: activate | Esc: cancel",
     };
     frame.render_widget(Paragraph::new(Line::from(Span::styled(format!(" {help}"),
         Style::default().fg(Color::Green)))).style(Style::default().bg(Color::Black)), area);
