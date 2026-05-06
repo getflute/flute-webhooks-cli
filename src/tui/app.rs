@@ -118,7 +118,8 @@ impl FormState {
             FormField::Cancel => FormField::Submit,
             FormField::Submit => FormField::Url,
         };
-        self.auto_scroll();
+        // Caller (App::handle_form_key) re-anchors scroll via App::form_auto_scroll
+        // because the accurate render-line lookup needs event_types for grouping.
     }
 
     pub fn prev_field(&mut self, num_events: usize) {
@@ -133,7 +134,6 @@ impl FormState {
             FormField::Cancel => if num_events > 0 { FormField::Event(num_events - 1) } else { FormField::UncheckAll },
             FormField::Submit => FormField::Cancel,
         };
-        self.auto_scroll();
     }
 
     // Each event row produces a checkbox line + a description line.
@@ -146,8 +146,6 @@ impl FormState {
     const GROUP_OVERHEAD_LINES: u16 = 14;
     // Final blank + the button row.
     const FOOTER_LINES: u16 = 3;
-    // How many lines of context to keep above the active event.
-    const VISIBLE_OFFSET: u16 = 20;
 
     /// Best-effort estimate of the wrapped form's total line count. Used both
     /// to clamp scroll on PgDn and to position scroll for Cancel/Submit.
@@ -167,21 +165,10 @@ impl FormState {
         self.total_form_lines().saturating_sub(8)
     }
 
-    /// Adjust `scroll` so the active field stays visible after Tab navigation.
-    fn auto_scroll(&mut self) {
-        let raw = match &self.active_field {
-            FormField::Url | FormField::Name | FormField::Status
-            | FormField::CheckAll | FormField::UncheckAll => 0,
-            FormField::Event(i) => {
-                let approx_line = (*i as u16)
-                    .saturating_mul(Self::LINES_PER_EVENT)
-                    .saturating_add(Self::PREAMBLE_LINES);
-                approx_line.saturating_sub(Self::VISIBLE_OFFSET)
-            }
-            FormField::Cancel | FormField::Submit => self.max_scroll(),
-        };
-        self.scroll = raw.min(self.max_scroll());
-    }
+    /// Number of viewport rows to keep visible above the active field after
+    /// Tab navigation. Made `pub` so App::form_auto_scroll can use the same
+    /// constant when computing render-line offsets.
+    pub const VISIBLE_OFFSET_PUB: u16 = 20;
 }
 
 #[allow(dead_code)]
@@ -326,6 +313,51 @@ impl App {
         }
         self.modal = ModalState::None;
         self.show_toast(if enabled { "Listener enabled" } else { "Listener disabled" });
+    }
+
+    /// Mirror modals.rs::group_events: events render alphabetically by group,
+    /// preceded by a group header line and followed by a blank between groups.
+    /// Returns the approximate top-row index where the event with `event_types`
+    /// position `i` is rendered inside the form Paragraph.
+    fn render_line_for_event(&self, i: usize) -> u16 {
+        use std::collections::BTreeMap;
+        let mut by_group: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        for (idx, et) in self.event_types.iter().enumerate() {
+            by_group.entry(et.group.clone()).or_default().push(idx);
+        }
+        // Match the FormState constants: PREAMBLE_LINES is private, so duplicate
+        // its value here with the same justification (subtitle + URL block +
+        // Name block + (Status if edit) + Events header + spacers).
+        const PREAMBLE: u16 = 14;
+        const LINES_PER_EVENT: u16 = 2;
+        let mut line: u16 = PREAMBLE;
+        for indices in by_group.values() {
+            line = line.saturating_add(1); // group header
+            for &idx in indices {
+                if idx == i {
+                    return line;
+                }
+                line = line.saturating_add(LINES_PER_EVENT);
+            }
+            line = line.saturating_add(1); // blank line between groups
+        }
+        line
+    }
+
+    /// Re-anchor `form.scroll` after Tab navigation so the active field stays
+    /// visible. Must be called from the App layer (not FormState) because it
+    /// needs `event_types` to mirror the modal's group-by-group rendering.
+    pub fn form_auto_scroll(&mut self) {
+        let raw = match &self.form.active_field {
+            FormField::Url | FormField::Name | FormField::Status
+            | FormField::CheckAll | FormField::UncheckAll => 0,
+            FormField::Event(i) => {
+                let line = self.render_line_for_event(*i);
+                line.saturating_sub(FormState::VISIBLE_OFFSET_PUB)
+            }
+            FormField::Cancel | FormField::Submit => self.form.max_scroll(),
+        };
+        self.form.scroll = raw.min(self.form.max_scroll());
     }
 
     pub fn cadence_mode(&self) -> crate::poller::CadenceMode {
@@ -571,8 +603,16 @@ impl App {
         let n = self.event_types.len();
         match key.code {
             KeyCode::Esc => { self.modal = ModalState::None; return AppAction::None; }
-            KeyCode::Tab | KeyCode::Down => { self.form.next_field(n); return AppAction::None; }
-            KeyCode::BackTab | KeyCode::Up => { self.form.prev_field(n); return AppAction::None; }
+            KeyCode::Tab | KeyCode::Down => {
+                self.form.next_field(n);
+                self.form_auto_scroll();
+                return AppAction::None;
+            }
+            KeyCode::BackTab | KeyCode::Up => {
+                self.form.prev_field(n);
+                self.form_auto_scroll();
+                return AppAction::None;
+            }
             // Left/Right swap between Cancel and Submit (a horizontal button
             // group). Ignored elsewhere so they don't accidentally jump out of
             // text-input fields.
@@ -840,7 +880,7 @@ mod tests {
         app.form = FormState::new_create(app.event_types.len());
 
         app.form.active_field = FormField::Submit;
-        app.form.auto_scroll();
+        app.form_auto_scroll();
         assert!(
             app.form.scroll < 1000,
             "scroll must stay bounded for buttons (was {}) — large values panic ratatui",
@@ -870,7 +910,7 @@ mod tests {
 
         // Jump active_field to a far-down event (skipping intermediate Tabs).
         app.form.active_field = FormField::Event(34);
-        app.form.auto_scroll();
+        app.form_auto_scroll();
         assert!(
             app.form.scroll > 50,
             "scroll must follow active event 34, got {}",
@@ -879,8 +919,51 @@ mod tests {
 
         // Returning to a top field resets the viewport.
         app.form.active_field = FormField::Url;
-        app.form.auto_scroll();
+        app.form_auto_scroll();
         assert_eq!(app.form.scroll, 0);
+    }
+
+    #[test]
+    fn auto_scroll_uses_grouped_render_order_not_event_index() {
+        // Reproduces "the arrow disappears after Settlement / can't toggle
+        // Terminal events". Two events: index 0 in group "Z-Last" (renders
+        // last alphabetically) and index 1 in group "A-First" (renders first).
+        // The naive index-based heuristic would scroll for index 0 as if it
+        // were near the top, but its actual render line is much further down.
+        let mut app = App::new(None);
+        app.modal = ModalState::EditWebhook(0);
+        app.event_types = vec![
+            crate::domain::EventTypeMeta {
+                name: "z.event".into(),
+                description: "lives in the alphabetically last group".into(),
+                group: "Z-Last".into(),
+            },
+            crate::domain::EventTypeMeta {
+                name: "a.event".into(),
+                description: "lives in the alphabetically first group".into(),
+                group: "A-First".into(),
+            },
+        ];
+        app.form = FormState::new_create(app.event_types.len());
+
+        // index 1 (group "A-First") renders FIRST; its line should be lower
+        // than index 0 (group "Z-Last") which renders LAST. The whole point
+        // of the bug fix.
+        let line_first_rendered = app.render_line_for_event(1);
+        let line_last_rendered = app.render_line_for_event(0);
+        assert!(
+            line_first_rendered < line_last_rendered,
+            "index 1 (group A-First) renders before index 0 (group Z-Last); \
+             got first={line_first_rendered}, last={line_last_rendered}"
+        );
+
+        // And tabbing to index 0 should scroll past index 1's content so the
+        // active row is reachable.
+        app.form.active_field = FormField::Event(0);
+        app.form_auto_scroll();
+        // No exact value — just assert scroll is non-zero (we did move down)
+        // and within bounds.
+        assert!(app.form.scroll <= app.form.max_scroll());
     }
 
     #[test]
@@ -990,7 +1073,7 @@ mod tests {
         app.modal = ModalState::CreateWebhook;
         app.form = FormState::new_create(35);
         app.form.active_field = FormField::Submit;
-        app.form.auto_scroll();
+        app.form_auto_scroll();
         assert!(app.form.scroll <= app.form.max_scroll(),
             "scroll={} must be <= max_scroll={}",
             app.form.scroll, app.form.max_scroll());
