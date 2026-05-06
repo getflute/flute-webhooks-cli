@@ -131,7 +131,9 @@ async fn execute_action(api: &ApiClient, action: AppAction,
             Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
         },
         AppAction::Update(id, req) => match api.update_endpoint(&id, &req).await {
-            Ok(_) => { let _ = outcome_tx.send(ActionOutcome::Toast("Webhook updated".into())).await; }
+            // Updated closes the form modal AND toasts so the user gets clear
+            // feedback that Save Changes succeeded.
+            Ok(_) => { let _ = outcome_tx.send(ActionOutcome::Updated).await; }
             Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
         },
         AppAction::Delete(id) => match api.delete_endpoint(&id).await {

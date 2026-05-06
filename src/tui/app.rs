@@ -762,6 +762,12 @@ pub enum ActionOutcome {
     // ~360 bytes vs the other variants at ~24 bytes, which clippy correctly
     // flags as `large_enum_variant`.
     DeliveryDetail(Box<crate::api::models::DeliveryLogDetailDto>),
+    /// Edit succeeded — close the open form modal and show a confirmation
+    /// toast. (Create has its own Created variant that swaps in the
+    /// WebhookCreated modal; Delete closes its modal optimistically when the
+    /// user confirms. Edit needs server-success before closing because the
+    /// user might want to retry on failure with their edits intact.)
+    Updated,
 }
 
 impl App {
@@ -777,6 +783,10 @@ impl App {
                 self.last_error = Some(msg);
             }
             ActionOutcome::DeliveryDetail(d) => self.set_delivery_detail(*d),
+            ActionOutcome::Updated => {
+                self.modal = ModalState::None;
+                self.show_toast("Webhook updated");
+            }
         }
     }
 }
@@ -1079,6 +1089,29 @@ mod tests {
             app.form.scroll, app.form.max_scroll());
         assert_eq!(app.form.scroll, app.form.max_scroll(),
             "Submit should sit at max_scroll so the buttons are flush at the bottom");
+    }
+
+    #[test]
+    fn updated_outcome_closes_the_edit_modal_and_toasts() {
+        let mut app = App::new(None);
+        app.modal = ModalState::EditWebhook(0);
+        app.apply_outcome(ActionOutcome::Updated);
+        assert_eq!(app.modal, ModalState::None,
+            "successful update must close the form modal");
+        assert_eq!(app.toast_message.as_deref(), Some("Webhook updated"));
+    }
+
+    #[test]
+    fn error_outcome_leaves_edit_modal_open_so_user_can_retry() {
+        // The flip-side: an Update FAILURE shows the error banner but must
+        // leave the form modal open so the user keeps their edits and can
+        // retry without re-typing everything.
+        let mut app = App::new(None);
+        app.modal = ModalState::EditWebhook(0);
+        app.apply_outcome(ActionOutcome::Error("API 500: boom".into()));
+        assert_eq!(app.modal, ModalState::EditWebhook(0),
+            "failed update must leave the form modal open");
+        assert!(app.last_error.is_some());
     }
 
     #[test]
