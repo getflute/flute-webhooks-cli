@@ -1,11 +1,12 @@
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 
 use crate::api::models::{
     DeliveryLogSummaryDto, EventTypeDto, GetWebhookEndpointDto,
     WebhookDeliveryLogStatus, WebhookEndpointStatus,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Endpoint {
     pub id: String,
     pub name: String,
@@ -28,7 +29,7 @@ impl From<GetWebhookEndpointDto> for Endpoint {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DeliveryLog {
     pub id: String,
     pub endpoint_id: String,
@@ -63,7 +64,7 @@ impl From<DeliveryLogSummaryDto> for DeliveryLog {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct EventTypeMeta {
     pub name: String,
     pub description: String,

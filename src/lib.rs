@@ -14,6 +14,7 @@ pub fn run() -> anyhow::Result<()> {
     let cli = cli::Cli::parse();
     let profile = cli.profile.clone();
     let debug = cli.debug;
+    let output_fmt = cli.output;
 
     // No subcommand: print help and exit. Previously defaulted to launching the
     // TUI, which surprised users who ran `flute-webhook --debug` expecting to
@@ -37,8 +38,34 @@ pub fn run() -> anyhow::Result<()> {
             cli::Command::Auth(cli::AuthCommand::Login) => auth_login(&profile).await,
             cli::Command::Auth(cli::AuthCommand::Token) => auth_print_token(&profile).await,
             cli::Command::Listen { forward_to } => listen(&profile, &forward_to).await,
+            cli::Command::Webhooks(c) => run_webhooks(&profile, output_fmt, c).await,
         }
     })
+}
+
+/// Build an authenticated ApiClient and dispatch a `webhooks …` subcommand.
+async fn run_webhooks(
+    profile: &str,
+    output: cli::OutputFormat,
+    cmd: cli::WebhooksCommand,
+) -> anyhow::Result<()> {
+    use std::sync::Arc;
+    use std::time::Duration;
+    let p = config::Profile::by_name(profile)
+        .ok_or_else(|| anyhow::anyhow!("unknown profile: {profile}"))?;
+    let (id, secret) = auth::keychain::load_with_env_fallback(profile)?
+        .ok_or_else(|| anyhow::anyhow!("no credentials for [{profile}]; run `flute-webhook auth login`"))?;
+    let http = reqwest::Client::builder().timeout(Duration::from_secs(15)).build()?;
+    let fetcher = Arc::new(auth::token::OAuth2Fetcher {
+        oauth_url: p.oauth_url.clone(),
+        client_id: id, client_secret: secret, http: http.clone(),
+    });
+    let api = api::ApiClient {
+        base_url: p.api_base_url.clone(),
+        http,
+        tokens: auth::token::TokenStore::new(fetcher),
+    };
+    cli::webhooks::run(&api, output, cmd).await
 }
 
 /// Headless polling mode: every new successful delivery seen on the API gets

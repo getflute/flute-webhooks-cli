@@ -118,6 +118,10 @@ impl ApiClient {
         self.send(Method::GET, "/v2/webhooks/endpoints", None).await
     }
 
+    pub async fn get_endpoint(&self, id: &str) -> Result<GetWebhookEndpointDto, ApiError> {
+        self.send(Method::GET, &format!("/v2/webhooks/endpoints/{id}"), None).await
+    }
+
     pub async fn create_endpoint(
         &self,
         req: &CreateWebhookEndpointRequest,

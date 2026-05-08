@@ -53,6 +53,30 @@ cargo run -- auth token
 
 Prints the current bearer JWT (useful for `curl` smoke tests). If credentials aren't stored, you'll get an actionable error pointing you back to `auth login`.
 
+### Webhook commands (non-interactive)
+
+Every Webhook API call is exposed as a subcommand. Output is human-readable by default; pass `--output json` for `jq`-pipeable JSON.
+
+```bash
+# Endpoints
+flute-webhook webhooks endpoints list
+flute-webhook webhooks endpoints get <id>
+flute-webhook webhooks endpoints create --url https://… --events transaction.card.captured,refund.completed [--name "My Hook"]
+flute-webhook webhooks endpoints update <id> [--url …] [--events …] [--name …] [--status active|inactive]
+flute-webhook webhooks endpoints delete <id> --yes
+flute-webhook webhooks endpoints ping <id>
+
+# Event-types catalog
+flute-webhook webhooks event-types list
+
+# Delivery logs
+flute-webhook webhooks deliveries list [--endpoint-id <id>] [--status success|failed] [--limit 50]
+flute-webhook webhooks deliveries get <id>
+flute-webhook webhooks deliveries retry <id>
+```
+
+`--debug` works on every command and prints the underlying HTTP requests + responses to stdout.
+
 ### Headless listen mode
 
 Without launching the TUI, poll the API and forward every NEW successful delivery to a local URL:

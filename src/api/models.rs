@@ -13,7 +13,7 @@ pub enum WebhookDeliveryLogStatus {
     Failure,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetWebhookEndpointDto {
     pub id: String,
@@ -25,7 +25,7 @@ pub struct GetWebhookEndpointDto {
     pub modified_on: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListWebhookEndpointsDto {
     pub data: Option<Vec<GetWebhookEndpointDto>>,
@@ -39,7 +39,7 @@ pub struct CreateWebhookEndpointRequest {
     pub event_types: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWebhookEndpointResponse {
     pub id: String,
@@ -60,7 +60,7 @@ pub struct UpdateWebhookEndpointRequest {
     pub event_types: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventTypeDto {
     pub id: i32,
@@ -69,13 +69,13 @@ pub struct EventTypeDto {
     pub group: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListEventTypesDto {
     pub data: Option<Vec<EventTypeDto>>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeliveryLogSummaryDto {
     pub id: String,
@@ -92,7 +92,7 @@ pub struct DeliveryLogSummaryDto {
     pub created_on: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeliveryLogDetailDto {
     pub id: String,
@@ -118,14 +118,14 @@ pub struct DeliveryLogDetailDto {
 /// (The earlier `{ "data": [...], "pagination": {...} }` shape was from a
 /// stale local swagger.json — confirmed against the live spec at
 /// /isv-api/swagger/v2/swagger.json.)
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListDeliveryLogsDto {
     pub items: Option<Vec<DeliveryLogSummaryDto>>,
     pub total: Option<i32>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PingResponseDto {
     pub success: bool,
