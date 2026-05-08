@@ -13,13 +13,13 @@ use flute_webhook::api::ApiClient;
 use flute_webhook::auth::token::{Fetcher, TokenStore};
 use flute_webhook::cli::webhooks;
 use flute_webhook::cli::{
-    DeliveriesCommand, EndpointStatusArg, EndpointsCommand, EventTypesCommand,
-    OutputFormat, WebhooksCommand,
+    DeliveriesCommand, EndpointStatusArg, EndpointsCommand, EventTypesCommand, OutputFormat,
+    WebhooksCommand,
 };
 use serde_json::json;
 use wiremock::{
-    matchers::{method, path, query_param, body_json},
     Mock, MockServer, ResponseTemplate,
+    matchers::{body_json, method, path, query_param},
 };
 
 struct StaticFetcher;
@@ -97,7 +97,10 @@ async fn endpoints_create_sends_expected_request_body() {
         OutputFormat::Json,
         WebhooksCommand::Endpoints(EndpointsCommand::Create {
             url: "https://example.com/hook".into(),
-            events: vec!["transaction.card.captured".into(), "refund.completed".into()],
+            events: vec![
+                "transaction.card.captured".into(),
+                "refund.completed".into(),
+            ],
             name: Some("my-hook".into()),
         }),
     )

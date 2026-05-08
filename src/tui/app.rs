@@ -3,7 +3,10 @@ use crate::domain::{DeliveryLog, Endpoint, EventTypeMeta};
 use std::collections::HashSet;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Screen { Endpoints, DeliveryLogs }
+pub enum Screen {
+    Endpoints,
+    DeliveryLogs,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ModalState {
@@ -11,9 +14,9 @@ pub enum ModalState {
     CreateWebhook,
     EditWebhook(usize),
     DeleteWebhook(usize),
-    WebhookCreated(String), // signing secret
+    WebhookCreated(String),  // signing secret
     DeliveryDetails(String), // delivery log id (for fetching detail on demand)
-    ListenerConfig,         // configure local-listener URL + on/off
+    ListenerConfig,          // configure local-listener URL + on/off
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -83,16 +86,19 @@ pub struct FormState {
 impl FormState {
     pub fn new_create(num_events: usize) -> Self {
         Self {
-            url: String::new(), name: String::new(),
+            url: String::new(),
+            name: String::new(),
             events: vec![true; num_events],
             status: WebhookEndpointStatus::Active,
             active_field: FormField::Url,
-            is_edit: false, scroll: 0,
+            is_edit: false,
+            scroll: 0,
         }
     }
 
     pub fn new_edit(ep: &Endpoint, event_types: &[EventTypeMeta]) -> Self {
-        let events: Vec<bool> = event_types.iter()
+        let events: Vec<bool> = event_types
+            .iter()
             .map(|et| ep.event_types.iter().any(|n| n == &et.name))
             .collect();
         Self {
@@ -101,14 +107,21 @@ impl FormState {
             events,
             status: ep.status,
             active_field: FormField::Url,
-            is_edit: true, scroll: 0,
+            is_edit: true,
+            scroll: 0,
         }
     }
 
     pub fn next_field(&mut self, num_events: usize) {
         self.active_field = match &self.active_field {
             FormField::Url => FormField::Name,
-            FormField::Name => if self.is_edit { FormField::Status } else { FormField::CheckAll },
+            FormField::Name => {
+                if self.is_edit {
+                    FormField::Status
+                } else {
+                    FormField::CheckAll
+                }
+            }
             FormField::Status => FormField::CheckAll,
             FormField::CheckAll => FormField::UncheckAll,
             FormField::UncheckAll if num_events > 0 => FormField::Event(0),
@@ -127,11 +140,23 @@ impl FormState {
             FormField::Url => FormField::Submit,
             FormField::Name => FormField::Url,
             FormField::Status => FormField::Name,
-            FormField::CheckAll => if self.is_edit { FormField::Status } else { FormField::Name },
+            FormField::CheckAll => {
+                if self.is_edit {
+                    FormField::Status
+                } else {
+                    FormField::Name
+                }
+            }
             FormField::UncheckAll => FormField::CheckAll,
             FormField::Event(0) => FormField::UncheckAll,
             FormField::Event(i) => FormField::Event(*i - 1),
-            FormField::Cancel => if num_events > 0 { FormField::Event(num_events - 1) } else { FormField::UncheckAll },
+            FormField::Cancel => {
+                if num_events > 0 {
+                    FormField::Event(num_events - 1)
+                } else {
+                    FormField::UncheckAll
+                }
+            }
             FormField::Submit => FormField::Cancel,
         };
     }
@@ -188,7 +213,7 @@ pub struct App {
 
     pub filter_endpoint: usize, // 0=All, 1+=index+1
     pub filter_event: usize,
-    pub filter_status: usize,   // 0=All, 1=Success, 2=Failure
+    pub filter_status: usize, // 0=All, 1=Success, 2=Failure
     pub sort_ascending: bool,
 
     pub toast_message: Option<String>,
@@ -244,17 +269,23 @@ impl App {
     pub fn tick_toast(&mut self) {
         if self.toast_timer > 0 {
             self.toast_timer -= 1;
-            if self.toast_timer == 0 { self.toast_message = None; }
+            if self.toast_timer == 0 {
+                self.toast_message = None;
+            }
         }
     }
 
-    pub fn clear_last_error(&mut self) { self.last_error = None; }
+    pub fn clear_last_error(&mut self) {
+        self.last_error = None;
+    }
 
     pub fn set_delivery_detail(&mut self, d: crate::api::models::DeliveryLogDetailDto) {
         self.delivery_detail = Some(d);
     }
 
-    pub fn clear_delivery_detail(&mut self) { self.delivery_detail = None; }
+    pub fn clear_delivery_detail(&mut self) {
+        self.delivery_detail = None;
+    }
 
     /// Apply a fresh poller snapshot to the app state. Returns any
     /// auto-forward actions that should be sent to the action executor —
@@ -312,7 +343,11 @@ impl App {
             self.seen_log_ids = self.logs.iter().map(|l| l.id.clone()).collect();
         }
         self.modal = ModalState::None;
-        self.show_toast(if enabled { "Listener enabled" } else { "Listener disabled" });
+        self.show_toast(if enabled {
+            "Listener enabled"
+        } else {
+            "Listener disabled"
+        });
     }
 
     /// Mirror modals.rs::group_events: events render alphabetically by group,
@@ -349,8 +384,11 @@ impl App {
     /// needs `event_types` to mirror the modal's group-by-group rendering.
     pub fn form_auto_scroll(&mut self) {
         let raw = match &self.form.active_field {
-            FormField::Url | FormField::Name | FormField::Status
-            | FormField::CheckAll | FormField::UncheckAll => 0,
+            FormField::Url
+            | FormField::Name
+            | FormField::Status
+            | FormField::CheckAll
+            | FormField::UncheckAll => 0,
             FormField::Event(i) => {
                 let line = self.render_line_for_event(*i);
                 line.saturating_sub(FormState::VISIBLE_OFFSET_PUB)
@@ -362,7 +400,9 @@ impl App {
 
     pub fn cadence_mode(&self) -> crate::poller::CadenceMode {
         match self.modal {
-            ModalState::CreateWebhook | ModalState::EditWebhook(_) => crate::poller::CadenceMode::Backoff,
+            ModalState::CreateWebhook | ModalState::EditWebhook(_) => {
+                crate::poller::CadenceMode::Backoff
+            }
             _ => crate::poller::CadenceMode::Active,
         }
     }
@@ -378,7 +418,10 @@ pub enum AppAction {
     Delete(String),
     OpenDetails(String),
     /// Forward this delivery log's headers + payload to a target URL.
-    ForwardLog { log_id: String, url: String },
+    ForwardLog {
+        log_id: String,
+        url: String,
+    },
     /// Send a test ping to the given endpoint id.
     PingEndpoint(String),
     /// Retry a failed delivery (single-shot — no automatic retry chain).
@@ -387,7 +430,9 @@ pub enum AppAction {
 
 impl App {
     pub fn handle_key(&mut self, key: KeyEvent) -> AppAction {
-        if key.kind != KeyEventKind::Press { return AppAction::None; }
+        if key.kind != KeyEventKind::Press {
+            return AppAction::None;
+        }
         // Ctrl-C always quits
         if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
             self.running = false;
@@ -414,7 +459,10 @@ impl App {
             return AppAction::None;
         }
         match key.code {
-            KeyCode::Char('q') => { self.running = false; AppAction::None }
+            KeyCode::Char('q') => {
+                self.running = false;
+                AppAction::None
+            }
             KeyCode::Tab | KeyCode::BackTab => {
                 self.screen = match self.screen {
                     Screen::Endpoints => Screen::DeliveryLogs,
@@ -425,7 +473,7 @@ impl App {
             _ => match self.screen {
                 Screen::Endpoints => self.handle_endpoints_key(key),
                 Screen::DeliveryLogs => self.handle_logs_key(key),
-            }
+            },
         }
     }
 
@@ -433,10 +481,12 @@ impl App {
         let n = self.endpoints.len();
         match key.code {
             KeyCode::Up | KeyCode::Char('k') if n > 0 && self.selected_endpoint > 0 => {
-                self.selected_endpoint -= 1; AppAction::None
+                self.selected_endpoint -= 1;
+                AppAction::None
             }
             KeyCode::Down | KeyCode::Char('j') if n > 0 && self.selected_endpoint + 1 < n => {
-                self.selected_endpoint += 1; AppAction::None
+                self.selected_endpoint += 1;
+                AppAction::None
             }
             KeyCode::Char('c') => {
                 self.form = FormState::new_create(self.event_types.len());
@@ -444,7 +494,8 @@ impl App {
                 AppAction::None
             }
             KeyCode::Char('e') | KeyCode::Enter if n > 0 => {
-                self.form = FormState::new_edit(&self.endpoints[self.selected_endpoint], &self.event_types);
+                self.form =
+                    FormState::new_edit(&self.endpoints[self.selected_endpoint], &self.event_types);
                 self.modal = ModalState::EditWebhook(self.selected_endpoint);
                 AppAction::None
             }
@@ -471,10 +522,12 @@ impl App {
         let n = filtered.len();
         match key.code {
             KeyCode::Up | KeyCode::Char('k') if n > 0 && self.selected_log > 0 => {
-                self.selected_log -= 1; AppAction::None
+                self.selected_log -= 1;
+                AppAction::None
             }
             KeyCode::Down | KeyCode::Char('j') if n > 0 && self.selected_log + 1 < n => {
-                self.selected_log += 1; AppAction::None
+                self.selected_log += 1;
+                AppAction::None
             }
             KeyCode::PageDown if n > 0 => {
                 self.selected_log = (self.selected_log + PAGE_STEP).min(n - 1);
@@ -484,8 +537,14 @@ impl App {
                 self.selected_log = self.selected_log.saturating_sub(PAGE_STEP);
                 AppAction::None
             }
-            KeyCode::Home if n > 0 => { self.selected_log = 0; AppAction::None }
-            KeyCode::End if n > 0 => { self.selected_log = n - 1; AppAction::None }
+            KeyCode::Home if n > 0 => {
+                self.selected_log = 0;
+                AppAction::None
+            }
+            KeyCode::End if n > 0 => {
+                self.selected_log = n - 1;
+                AppAction::None
+            }
             KeyCode::Enter | KeyCode::Char('v') if n > 0 => {
                 let id = self.logs[filtered[self.selected_log]].id.clone();
                 self.detail_scroll = 0;
@@ -494,15 +553,18 @@ impl App {
             }
             KeyCode::Char('1') => {
                 self.filter_endpoint = (self.filter_endpoint + 1) % (self.endpoints.len() + 1);
-                self.selected_log = 0; AppAction::None
+                self.selected_log = 0;
+                AppAction::None
             }
             KeyCode::Char('2') => {
                 self.filter_event = (self.filter_event + 1) % (self.event_types.len() + 1);
-                self.selected_log = 0; AppAction::None
+                self.selected_log = 0;
+                AppAction::None
             }
             KeyCode::Char('3') => {
                 self.filter_status = (self.filter_status + 1) % 3;
-                self.selected_log = 0; AppAction::None
+                self.selected_log = 0;
+                AppAction::None
             }
             // Manually retry the selected delivery. Only meaningful on
             // failed deliveries — the API rejects retries on Success rows.
@@ -519,14 +581,21 @@ impl App {
                 self.show_toast(format!("Retrying {prefix}…"));
                 AppAction::RetryDelivery(log_id)
             }
-            KeyCode::Char('s') => { self.sort_ascending = !self.sort_ascending; AppAction::None }
+            KeyCode::Char('s') => {
+                self.sort_ascending = !self.sort_ascending;
+                AppAction::None
+            }
             KeyCode::Char('x') => {
-                self.filter_endpoint = 0; self.filter_event = 0; self.filter_status = 0;
-                self.selected_log = 0; AppAction::None
+                self.filter_endpoint = 0;
+                self.filter_event = 0;
+                self.filter_status = 0;
+                self.selected_log = 0;
+                AppAction::None
             }
             // Open the listener-config modal: enable/disable + set URL.
             KeyCode::Char('l') => {
-                self.listener_form = ListenerForm::from_app(self.listener_url.clone(), self.listener_enabled);
+                self.listener_form =
+                    ListenerForm::from_app(self.listener_url.clone(), self.listener_enabled);
                 self.modal = ModalState::ListenerConfig;
                 AppAction::None
             }
@@ -556,7 +625,10 @@ impl App {
 
     fn handle_listener_key(&mut self, key: KeyEvent) -> AppAction {
         match key.code {
-            KeyCode::Esc => { self.modal = ModalState::None; return AppAction::None; }
+            KeyCode::Esc => {
+                self.modal = ModalState::None;
+                return AppAction::None;
+            }
             KeyCode::Tab | KeyCode::Down => {
                 self.listener_form.next_field();
                 return AppAction::None;
@@ -569,7 +641,9 @@ impl App {
                 match self.listener_form.active_field {
                     ListenerField::Cancel => self.modal = ModalState::None,
                     ListenerField::Save => self.save_listener_config(),
-                    ListenerField::Enabled => self.listener_form.enabled = !self.listener_form.enabled,
+                    ListenerField::Enabled => {
+                        self.listener_form.enabled = !self.listener_form.enabled
+                    }
                     ListenerField::Url => self.listener_form.next_field(),
                 }
                 return AppAction::None;
@@ -602,34 +676,45 @@ impl App {
     }
 
     pub fn filtered_log_indices(&self) -> Vec<usize> {
-        let mut out: Vec<usize> = (0..self.logs.len()).filter(|&i| {
-            let log = &self.logs[i];
-            if self.filter_endpoint > 0 {
-                let ep_idx = self.filter_endpoint - 1;
-                if ep_idx >= self.endpoints.len() || self.endpoints[ep_idx].id != log.endpoint_id {
-                    return false;
+        let mut out: Vec<usize> = (0..self.logs.len())
+            .filter(|&i| {
+                let log = &self.logs[i];
+                if self.filter_endpoint > 0 {
+                    let ep_idx = self.filter_endpoint - 1;
+                    if ep_idx >= self.endpoints.len()
+                        || self.endpoints[ep_idx].id != log.endpoint_id
+                    {
+                        return false;
+                    }
                 }
-            }
-            if self.filter_event > 0 {
-                let evt_idx = self.filter_event - 1;
-                if evt_idx >= self.event_types.len() || self.event_types[evt_idx].name != log.event_type {
-                    return false;
+                if self.filter_event > 0 {
+                    let evt_idx = self.filter_event - 1;
+                    if evt_idx >= self.event_types.len()
+                        || self.event_types[evt_idx].name != log.event_type
+                    {
+                        return false;
+                    }
                 }
-            }
-            match self.filter_status {
-                1 => log.status == WebhookDeliveryLogStatus::Success,
-                2 => log.status == WebhookDeliveryLogStatus::Failure,
-                _ => true,
-            }
-        }).collect();
-        if self.sort_ascending { out.reverse(); }
+                match self.filter_status {
+                    1 => log.status == WebhookDeliveryLogStatus::Success,
+                    2 => log.status == WebhookDeliveryLogStatus::Failure,
+                    _ => true,
+                }
+            })
+            .collect();
+        if self.sort_ascending {
+            out.reverse();
+        }
         out
     }
 
     fn handle_form_key(&mut self, key: KeyEvent) -> AppAction {
         let n = self.event_types.len();
         match key.code {
-            KeyCode::Esc => { self.modal = ModalState::None; return AppAction::None; }
+            KeyCode::Esc => {
+                self.modal = ModalState::None;
+                return AppAction::None;
+            }
             KeyCode::Tab | KeyCode::Down => {
                 self.form.next_field(n);
                 self.form_auto_scroll();
@@ -662,8 +747,14 @@ impl App {
             }
             KeyCode::Enter => return self.activate_form_field(),
             KeyCode::Backspace => match self.form.active_field {
-                FormField::Url => { self.form.url.pop(); return AppAction::None; }
-                FormField::Name => { self.form.name.pop(); return AppAction::None; }
+                FormField::Url => {
+                    self.form.url.pop();
+                    return AppAction::None;
+                }
+                FormField::Name => {
+                    self.form.name.pop();
+                    return AppAction::None;
+                }
                 _ => return AppAction::None,
             },
             KeyCode::Char(' ') => match self.form.active_field {
@@ -683,12 +774,23 @@ impl App {
 
     fn activate_form_field(&mut self) -> AppAction {
         match self.form.active_field.clone() {
-            FormField::Cancel => { self.modal = ModalState::None; AppAction::None }
+            FormField::Cancel => {
+                self.modal = ModalState::None;
+                AppAction::None
+            }
             FormField::Submit => self.submit_form(),
-            FormField::CheckAll => { self.form.events.iter_mut().for_each(|e| *e = true); AppAction::None }
-            FormField::UncheckAll => { self.form.events.iter_mut().for_each(|e| *e = false); AppAction::None }
+            FormField::CheckAll => {
+                self.form.events.iter_mut().for_each(|e| *e = true);
+                AppAction::None
+            }
+            FormField::UncheckAll => {
+                self.form.events.iter_mut().for_each(|e| *e = false);
+                AppAction::None
+            }
             FormField::Event(i) => {
-                if let Some(slot) = self.form.events.get_mut(i) { *slot = !*slot; }
+                if let Some(slot) = self.form.events.get_mut(i) {
+                    *slot = !*slot;
+                }
                 AppAction::None
             }
             FormField::Status => {
@@ -703,7 +805,10 @@ impl App {
     }
 
     fn submit_form(&mut self) -> AppAction {
-        let selected: Vec<String> = self.event_types.iter().enumerate()
+        let selected: Vec<String> = self
+            .event_types
+            .iter()
+            .enumerate()
             .filter(|(i, _)| self.form.events.get(*i).copied().unwrap_or(false))
             .map(|(_, et)| et.name.clone())
             .collect();
@@ -723,7 +828,9 @@ impl App {
         match self.modal.clone() {
             ModalState::CreateWebhook => {
                 AppAction::Create(crate::api::models::CreateWebhookEndpointRequest {
-                    name, endpoint_url: self.form.url.clone(), event_types: selected,
+                    name,
+                    endpoint_url: self.form.url.clone(),
+                    event_types: selected,
                 })
             }
             ModalState::EditWebhook(idx) => {
@@ -733,10 +840,15 @@ impl App {
                     return AppAction::None;
                 };
                 let id = ep.id.clone();
-                AppAction::Update(id, crate::api::models::UpdateWebhookEndpointRequest {
-                    name, endpoint_url: self.form.url.clone(),
-                    status: self.form.status, event_types: selected,
-                })
+                AppAction::Update(
+                    id,
+                    crate::api::models::UpdateWebhookEndpointRequest {
+                        name,
+                        endpoint_url: self.form.url.clone(),
+                        status: self.form.status,
+                        event_types: selected,
+                    },
+                )
             }
             _ => AppAction::None,
         }
@@ -744,7 +856,10 @@ impl App {
 
     fn handle_delete_key(&mut self, key: KeyEvent, idx: usize) -> AppAction {
         match key.code {
-            KeyCode::Esc | KeyCode::Char('n') => { self.modal = ModalState::None; AppAction::None }
+            KeyCode::Esc | KeyCode::Char('n') => {
+                self.modal = ModalState::None;
+                AppAction::None
+            }
             KeyCode::Enter | KeyCode::Char('y') => {
                 if let Some(ep) = self.endpoints.get(idx) {
                     let id = ep.id.clone();
@@ -770,8 +885,12 @@ impl App {
                 self.modal = ModalState::None;
                 self.clear_delivery_detail();
             }
-            KeyCode::Down | KeyCode::Char('j') => self.detail_scroll = self.detail_scroll.saturating_add(2),
-            KeyCode::Up | KeyCode::Char('k') => self.detail_scroll = self.detail_scroll.saturating_sub(2),
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.detail_scroll = self.detail_scroll.saturating_add(2)
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.detail_scroll = self.detail_scroll.saturating_sub(2)
+            }
             KeyCode::PageDown => self.detail_scroll = self.detail_scroll.saturating_add(10),
             KeyCode::PageUp => self.detail_scroll = self.detail_scroll.saturating_sub(10),
             _ => {}
@@ -783,7 +902,9 @@ impl App {
 #[derive(Debug)]
 pub enum ActionOutcome {
     Toast(String),
-    Created { secret: String },
+    Created {
+        secret: String,
+    },
     Error(String),
     // Boxed so this variant doesn't bloat the enum's stack size — the DTO is
     // ~360 bytes vs the other variants at ~24 bytes, which clippy correctly
@@ -824,7 +945,12 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 
     fn key(c: char) -> KeyEvent {
-        KeyEvent { code: KeyCode::Char(c), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::empty() }
+        KeyEvent {
+            code: KeyCode::Char(c),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        }
     }
 
     #[test]
@@ -837,7 +963,12 @@ mod tests {
     #[test]
     fn tab_switches_screens() {
         let mut app = App::new(None);
-        let kp = KeyEvent { code: KeyCode::Tab, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::empty() };
+        let kp = KeyEvent {
+            code: KeyCode::Tab,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        };
         app.handle_key(kp);
         assert_eq!(app.screen, Screen::DeliveryLogs);
         app.handle_key(kp);
@@ -849,7 +980,12 @@ mod tests {
         let mut app = App::new(None);
         app.modal = ModalState::CreateWebhook;
         app.form = FormState::new_create(0);
-        let kp = KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL, kind: KeyEventKind::Press, state: KeyEventState::empty() };
+        let kp = KeyEvent {
+            code: KeyCode::Char('c'),
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        };
         app.handle_key(kp);
         assert!(!app.running);
     }
@@ -872,7 +1008,9 @@ mod tests {
         app.modal = ModalState::CreateWebhook;
         app.form = FormState::new_create(0);
         app.form.active_field = FormField::Name;
-        for c in ['q', 'c', 'd', 'e'] { app.handle_key(key(c)); }
+        for c in ['q', 'c', 'd', 'e'] {
+            app.handle_key(key(c));
+        }
         assert_eq!(app.form.name, "qcde");
         assert!(app.running);
     }
@@ -882,7 +1020,12 @@ mod tests {
         let mut app = App::new(None);
         app.modal = ModalState::CreateWebhook;
         app.form = FormState::new_create(0);
-        let kp = KeyEvent { code: KeyCode::Esc, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let kp = KeyEvent {
+            code: KeyCode::Esc,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::empty(),
+        };
         app.handle_key(kp);
         assert_eq!(app.modal, ModalState::None);
     }
@@ -892,7 +1035,12 @@ mod tests {
         let mut app = App::new(None);
         app.modal = ModalState::CreateWebhook;
         app.form = FormState::new_create(35);
-        let kp = KeyEvent { code: KeyCode::PageDown, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let kp = KeyEvent {
+            code: KeyCode::PageDown,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::empty(),
+        };
         app.handle_key(kp);
         app.handle_key(kp);
         // Manual PgDn step is 15 — two presses gives 30.
@@ -923,7 +1071,10 @@ mod tests {
             "scroll must stay bounded for buttons (was {}) — large values panic ratatui",
             app.form.scroll
         );
-        assert!(app.form.scroll > 50, "scroll must still reach the bottom of the form");
+        assert!(
+            app.form.scroll > 50,
+            "scroll must still reach the bottom of the form"
+        );
     }
 
     #[test]
@@ -1009,11 +1160,21 @@ mod tests {
         app.modal = ModalState::CreateWebhook;
         app.form = FormState::new_create(35);
         let max = app.form.max_scroll();
-        let pg = KeyEvent { code: KeyCode::PageDown, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let pg = KeyEvent {
+            code: KeyCode::PageDown,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::empty(),
+        };
         // Mash PgDn far more times than the form is long.
-        for _ in 0..200 { app.handle_key(pg); }
-        assert_eq!(app.form.scroll, max,
-            "scroll must clamp at max_scroll ({max}), got {}", app.form.scroll);
+        for _ in 0..200 {
+            app.handle_key(pg);
+        }
+        assert_eq!(
+            app.form.scroll, max,
+            "scroll must clamp at max_scroll ({max}), got {}",
+            app.form.scroll
+        );
     }
 
     #[test]
@@ -1038,7 +1199,12 @@ mod tests {
             })
             .collect();
 
-        let kp = |code| KeyEvent { code, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let kp = |code| KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::empty(),
+        };
 
         // PgDn jumps 10 rows.
         app.handle_key(kp(KeyCode::PageDown));
@@ -1074,8 +1240,18 @@ mod tests {
         app.form = FormState::new_create(0);
         app.form.active_field = FormField::Cancel;
 
-        let right = KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
-        let left = KeyEvent { code: KeyCode::Left, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let right = KeyEvent {
+            code: KeyCode::Right,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::empty(),
+        };
+        let left = KeyEvent {
+            code: KeyCode::Left,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::empty(),
+        };
 
         app.handle_key(right);
         assert_eq!(app.form.active_field, FormField::Submit);
@@ -1096,7 +1272,12 @@ mod tests {
         app.modal = ModalState::CreateWebhook;
         app.form = FormState::new_create(0);
         app.form.active_field = FormField::Url;
-        let right = KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let right = KeyEvent {
+            code: KeyCode::Right,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::empty(),
+        };
         app.handle_key(right);
         assert_eq!(app.form.active_field, FormField::Url);
     }
@@ -1111,11 +1292,17 @@ mod tests {
         app.form = FormState::new_create(35);
         app.form.active_field = FormField::Submit;
         app.form_auto_scroll();
-        assert!(app.form.scroll <= app.form.max_scroll(),
+        assert!(
+            app.form.scroll <= app.form.max_scroll(),
             "scroll={} must be <= max_scroll={}",
-            app.form.scroll, app.form.max_scroll());
-        assert_eq!(app.form.scroll, app.form.max_scroll(),
-            "Submit should sit at max_scroll so the buttons are flush at the bottom");
+            app.form.scroll,
+            app.form.max_scroll()
+        );
+        assert_eq!(
+            app.form.scroll,
+            app.form.max_scroll(),
+            "Submit should sit at max_scroll so the buttons are flush at the bottom"
+        );
     }
 
     #[test]
@@ -1123,8 +1310,11 @@ mod tests {
         let mut app = App::new(None);
         app.modal = ModalState::EditWebhook(0);
         app.apply_outcome(ActionOutcome::Updated);
-        assert_eq!(app.modal, ModalState::None,
-            "successful update must close the form modal");
+        assert_eq!(
+            app.modal,
+            ModalState::None,
+            "successful update must close the form modal"
+        );
         assert_eq!(app.toast_message.as_deref(), Some("Webhook updated"));
     }
 
@@ -1136,8 +1326,11 @@ mod tests {
         let mut app = App::new(None);
         app.modal = ModalState::EditWebhook(0);
         app.apply_outcome(ActionOutcome::Error("API 500: boom".into()));
-        assert_eq!(app.modal, ModalState::EditWebhook(0),
-            "failed update must leave the form modal open");
+        assert_eq!(
+            app.modal,
+            ModalState::EditWebhook(0),
+            "failed update must leave the form modal open"
+        );
         assert!(app.last_error.is_some());
     }
 
@@ -1176,7 +1369,7 @@ mod tests {
         app.seen_log_ids.insert("old-1".into());
 
         let new_logs = vec![
-            fake_log("old-1", WebhookDeliveryLogStatus::Success),  // already seen
+            fake_log("old-1", WebhookDeliveryLogStatus::Success), // already seen
             fake_log("new-success", WebhookDeliveryLogStatus::Success),
             fake_log("new-failed", WebhookDeliveryLogStatus::Failure),
         ];
@@ -1238,7 +1431,12 @@ mod tests {
         app.screen = Screen::DeliveryLogs;
         app.logs = vec![fake_log("the-log", WebhookDeliveryLogStatus::Success)];
         app.listener_url = Some("http://127.0.0.1:9000/hook".into());
-        let kp = KeyEvent { code: KeyCode::Char('t'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let kp = KeyEvent {
+            code: KeyCode::Char('t'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::empty(),
+        };
         match app.handle_key(kp) {
             AppAction::ForwardLog { log_id, url } => {
                 assert_eq!(log_id, "the-log");
@@ -1254,7 +1452,12 @@ mod tests {
         app.screen = Screen::DeliveryLogs;
         app.logs = vec![fake_log("the-log", WebhookDeliveryLogStatus::Success)];
         // listener_url is None
-        let kp = KeyEvent { code: KeyCode::Char('t'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let kp = KeyEvent {
+            code: KeyCode::Char('t'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::empty(),
+        };
         let action = app.handle_key(kp);
         assert!(matches!(action, AppAction::None));
         assert!(app.toast_message.is_some());
@@ -1272,7 +1475,12 @@ mod tests {
             status: WebhookEndpointStatus::Active,
             created_on: None,
         }];
-        let kp = KeyEvent { code: KeyCode::Char('p'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let kp = KeyEvent {
+            code: KeyCode::Char('p'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::empty(),
+        };
         match app.handle_key(kp) {
             AppAction::PingEndpoint(id) => assert_eq!(id, "ep-42"),
             other => panic!("expected PingEndpoint, got {other:?}"),
@@ -1284,7 +1492,12 @@ mod tests {
         let mut app = App::new(None);
         app.screen = Screen::DeliveryLogs;
         app.logs = vec![fake_log("dl-1", WebhookDeliveryLogStatus::Failure)];
-        let kp = KeyEvent { code: KeyCode::Char('r'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let kp = KeyEvent {
+            code: KeyCode::Char('r'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::empty(),
+        };
         match app.handle_key(kp) {
             AppAction::RetryDelivery(id) => assert_eq!(id, "dl-1"),
             other => panic!("expected RetryDelivery, got {other:?}"),
@@ -1298,7 +1511,12 @@ mod tests {
         let mut app = App::new(None);
         app.screen = Screen::DeliveryLogs;
         app.logs = vec![fake_log("dl-ok", WebhookDeliveryLogStatus::Success)];
-        let kp = KeyEvent { code: KeyCode::Char('r'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let kp = KeyEvent {
+            code: KeyCode::Char('r'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::empty(),
+        };
         let action = app.handle_key(kp);
         assert!(matches!(action, AppAction::None));
         assert!(app.toast_message.is_some());
@@ -1308,7 +1526,12 @@ mod tests {
     fn l_opens_listener_modal_from_logs_screen() {
         let mut app = App::new(None);
         app.screen = Screen::DeliveryLogs;
-        let kp = KeyEvent { code: KeyCode::Char('l'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let kp = KeyEvent {
+            code: KeyCode::Char('l'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::empty(),
+        };
         app.handle_key(kp);
         assert_eq!(app.modal, ModalState::ListenerConfig);
     }
@@ -1317,7 +1540,12 @@ mod tests {
     fn esc_on_main_screen_dismisses_last_error() {
         let mut app = App::new(None);
         app.last_error = Some("Poll error: 401".into());
-        let kp = KeyEvent { code: KeyCode::Esc, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let kp = KeyEvent {
+            code: KeyCode::Esc,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::empty(),
+        };
         app.handle_key(kp);
         assert!(app.last_error.is_none());
         assert!(app.running, "dismissing error must not quit the app");
@@ -1327,7 +1555,12 @@ mod tests {
     fn enter_dismisses_error_modal() {
         let mut app = App::new(None);
         app.last_error = Some("API 500".into());
-        let kp = KeyEvent { code: KeyCode::Enter, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let kp = KeyEvent {
+            code: KeyCode::Enter,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::empty(),
+        };
         app.handle_key(kp);
         assert!(app.last_error.is_none());
     }
@@ -1351,8 +1584,13 @@ mod tests {
     #[test]
     fn error_outcome_sets_last_error_persistently() {
         let mut app = App::new(None);
-        app.apply_outcome(ActionOutcome::Error("API 500 (correlation_id=abc): boom".into()));
-        assert_eq!(app.last_error.as_deref(), Some("API 500 (correlation_id=abc): boom"));
+        app.apply_outcome(ActionOutcome::Error(
+            "API 500 (correlation_id=abc): boom".into(),
+        ));
+        assert_eq!(
+            app.last_error.as_deref(),
+            Some("API 500 (correlation_id=abc): boom")
+        );
         // Toast should NOT be set — errors are sticky in the banner, not transient.
         assert!(app.toast_message.is_none());
     }

@@ -6,7 +6,11 @@ pub enum ApiError {
     Transport(#[from] reqwest::Error),
 
     #[error("API {status} (correlation_id={correlation_id:?}): {message}")]
-    Api { status: u16, correlation_id: Option<String>, message: String },
+    Api {
+        status: u16,
+        correlation_id: Option<String>,
+        message: String,
+    },
 
     #[error("auth error: {0}")]
     Auth(String),
@@ -54,9 +58,17 @@ pub fn from_aspnet(status: u16, body: &str) -> ApiError {
                 Some(et) => format!("{core} [{et}]"),
                 None => core,
             };
-            ApiError::Api { status, correlation_id: e.correlation_id, message }
+            ApiError::Api {
+                status,
+                correlation_id: e.correlation_id,
+                message,
+            }
         }
-        Err(_) => ApiError::Api { status, correlation_id: None, message: body.to_string() },
+        Err(_) => ApiError::Api {
+            status,
+            correlation_id: None,
+            message: body.to_string(),
+        },
     }
 }
 
@@ -68,7 +80,11 @@ mod tests {
     fn message_combines_title_and_details() {
         let body = r#"{"details":"X","title":"Validation failed","statusCode":400,"correlationId":"abc-123","errorCode":"V0000"}"#;
         match from_aspnet(400, body) {
-            ApiError::Api { status, correlation_id, message } => {
+            ApiError::Api {
+                status,
+                correlation_id,
+                message,
+            } => {
                 assert_eq!(status, 400);
                 assert_eq!(correlation_id.as_deref(), Some("abc-123"));
                 // Both fields surface — title alone would mask the specific cause.
@@ -90,7 +106,11 @@ mod tests {
     #[test]
     fn falls_back_when_body_is_not_aspnet() {
         match from_aspnet(500, "oops") {
-            ApiError::Api { status, correlation_id, message } => {
+            ApiError::Api {
+                status,
+                correlation_id,
+                message,
+            } => {
                 assert_eq!(status, 500);
                 assert!(correlation_id.is_none());
                 assert_eq!(message, "oops");
@@ -106,9 +126,16 @@ mod tests {
         // and ExceptionType. The parser must surface all three.
         let body = r#"{"Details":"Value cannot be null. (Parameter 'uriString')","StatusCode":500,"Source":"IsvApiBff","ExceptionType":"ArgumentNullException","CorrelationId":"45d859f6-dc38-4d8f-8bab-ae4e20036919","ErrorCode":"I0000","Title":"Internal server error"}"#;
         match from_aspnet(500, body) {
-            ApiError::Api { status, correlation_id, message } => {
+            ApiError::Api {
+                status,
+                correlation_id,
+                message,
+            } => {
                 assert_eq!(status, 500);
-                assert_eq!(correlation_id.as_deref(), Some("45d859f6-dc38-4d8f-8bab-ae4e20036919"));
+                assert_eq!(
+                    correlation_id.as_deref(),
+                    Some("45d859f6-dc38-4d8f-8bab-ae4e20036919")
+                );
                 assert_eq!(
                     message,
                     "Internal server error: Value cannot be null. (Parameter 'uriString') [ArgumentNullException]"

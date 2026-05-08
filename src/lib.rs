@@ -53,12 +53,17 @@ async fn run_webhooks(
     use std::time::Duration;
     let p = config::Profile::by_name(profile)
         .ok_or_else(|| anyhow::anyhow!("unknown profile: {profile}"))?;
-    let (id, secret) = auth::keychain::load_with_env_fallback(profile)?
-        .ok_or_else(|| anyhow::anyhow!("no credentials for [{profile}]; run `flute-webhook auth login`"))?;
-    let http = reqwest::Client::builder().timeout(Duration::from_secs(15)).build()?;
+    let (id, secret) = auth::keychain::load_with_env_fallback(profile)?.ok_or_else(|| {
+        anyhow::anyhow!("no credentials for [{profile}]; run `flute-webhook auth login`")
+    })?;
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()?;
     let fetcher = Arc::new(auth::token::OAuth2Fetcher {
         oauth_url: p.oauth_url.clone(),
-        client_id: id, client_secret: secret, http: http.clone(),
+        client_id: id,
+        client_secret: secret,
+        http: http.clone(),
     });
     let api = api::ApiClient {
         base_url: p.api_base_url.clone(),
@@ -82,12 +87,17 @@ async fn listen(profile: &str, forward_to: &str) -> anyhow::Result<()> {
     let cfg = config::load_or_default();
     let secs = config::validate_poll_interval(cfg.poll_interval_seconds).seconds;
 
-    let (id, secret) = auth::keychain::load_with_env_fallback(profile)?
-        .ok_or_else(|| anyhow::anyhow!("no credentials for [{profile}]; run `flute-webhook auth login`"))?;
-    let http = reqwest::Client::builder().timeout(Duration::from_secs(15)).build()?;
+    let (id, secret) = auth::keychain::load_with_env_fallback(profile)?.ok_or_else(|| {
+        anyhow::anyhow!("no credentials for [{profile}]; run `flute-webhook auth login`")
+    })?;
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()?;
     let fetcher = Arc::new(auth::token::OAuth2Fetcher {
         oauth_url: p.oauth_url.clone(),
-        client_id: id, client_secret: secret, http: http.clone(),
+        client_id: id,
+        client_secret: secret,
+        http: http.clone(),
     });
     let api = api::ApiClient {
         base_url: p.api_base_url.clone(),
@@ -102,7 +112,12 @@ async fn listen(profile: &str, forward_to: &str) -> anyhow::Result<()> {
     // don't replay history on startup. From here on we only forward genuinely
     // new successful arrivals.
     let mut seen: HashSet<String> = match api.list_delivery_logs(500).await {
-        Ok(r) => r.items.unwrap_or_default().into_iter().map(|l| l.id).collect(),
+        Ok(r) => r
+            .items
+            .unwrap_or_default()
+            .into_iter()
+            .map(|l| l.id)
+            .collect(),
         Err(e) => {
             eprintln!("warm-up fetch failed: {e}");
             HashSet::new()
@@ -116,16 +131,22 @@ async fn listen(profile: &str, forward_to: &str) -> anyhow::Result<()> {
             Ok(resp) => {
                 let logs = resp.items.unwrap_or_default();
                 for l in logs.iter() {
-                    let success = matches!(l.status, api::models::WebhookDeliveryLogStatus::Success);
+                    let success =
+                        matches!(l.status, api::models::WebhookDeliveryLogStatus::Success);
                     if success && !seen.contains(&l.id) {
                         let prefix = l.id.get(..8.min(l.id.len())).unwrap_or("");
                         match forward::forward_log(&http, &api, &l.id, forward_to).await {
-                            Ok(_) => println!("forwarded {prefix}… ({})", l.event_type.clone().unwrap_or_default()),
+                            Ok(_) => println!(
+                                "forwarded {prefix}… ({})",
+                                l.event_type.clone().unwrap_or_default()
+                            ),
                             Err(e) => eprintln!("forward {prefix}… failed: {e}"),
                         }
                     }
                 }
-                for l in logs { seen.insert(l.id); }
+                for l in logs {
+                    seen.insert(l.id);
+                }
             }
             Err(e) => {
                 eprintln!("poll failed: {e}");
@@ -153,7 +174,11 @@ fn init_tracing(is_tui: bool, debug: bool) {
     if is_tui {
         let _ = std::fs::create_dir_all(config::config_dir());
         let log_path = config::config_dir().join("flute-webhook.log");
-        match std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+        match std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)
+        {
             Ok(file) => {
                 let _ = tracing_subscriber::fmt()
                     .with_env_filter(env_filter)
@@ -211,8 +236,9 @@ async fn auth_login(profile: &str) -> anyhow::Result<()> {
 async fn auth_print_token(profile: &str) -> anyhow::Result<()> {
     let p = config::Profile::by_name(profile)
         .ok_or_else(|| anyhow::anyhow!("unknown profile: {profile}"))?;
-    let (id, secret) = auth::keychain::load_with_env_fallback(profile)?
-        .ok_or_else(|| anyhow::anyhow!("no credentials for [{profile}]; run `flute-webhook auth login`"))?;
+    let (id, secret) = auth::keychain::load_with_env_fallback(profile)?.ok_or_else(|| {
+        anyhow::anyhow!("no credentials for [{profile}]; run `flute-webhook auth login`")
+    })?;
     let fetcher = std::sync::Arc::new(auth::token::OAuth2Fetcher {
         oauth_url: p.oauth_url,
         client_id: id,

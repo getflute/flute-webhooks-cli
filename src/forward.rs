@@ -11,7 +11,7 @@
 //! TUI — we log via tracing and move on.
 
 use crate::api::ApiClient;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use reqwest::Client;
 use tracing::{debug, warn};
 
@@ -49,9 +49,19 @@ pub async fn forward_log(
         Ok(resp) => {
             let status = resp.status();
             if status.is_success() {
-                debug!(log_id, target_url, status = status.as_u16(), "forwarded webhook delivery");
+                debug!(
+                    log_id,
+                    target_url,
+                    status = status.as_u16(),
+                    "forwarded webhook delivery"
+                );
             } else {
-                warn!(log_id, target_url, status = status.as_u16(), "listener returned non-2xx");
+                warn!(
+                    log_id,
+                    target_url,
+                    status = status.as_u16(),
+                    "listener returned non-2xx"
+                );
             }
         }
         Err(e) => {

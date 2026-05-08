@@ -14,7 +14,8 @@ struct StoredCreds {
 }
 
 fn entry(profile: &str) -> Result<Entry> {
-    Entry::new(SERVICE, profile).with_context(|| format!("creating keyring entry for profile {profile}"))
+    Entry::new(SERVICE, profile)
+        .with_context(|| format!("creating keyring entry for profile {profile}"))
 }
 
 /// Older builds stored credentials as two separate keychain entries
@@ -56,8 +57,8 @@ pub fn load_client_credentials(profile: &str) -> Result<Option<(String, String)>
     let e = entry(profile)?;
     match e.get_password() {
         Ok(json) => {
-            let creds: StoredCreds = serde_json::from_str(&json)
-                .context("decoding credentials JSON from keychain")?;
+            let creds: StoredCreds =
+                serde_json::from_str(&json).context("decoding credentials JSON from keychain")?;
             Ok(Some((creds.client_id, creds.client_secret)))
         }
         Err(keyring::Error::NoEntry) => {

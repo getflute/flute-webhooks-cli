@@ -1,4 +1,4 @@
-use crate::api::error::{from_aspnet, ApiError};
+use crate::api::error::{ApiError, from_aspnet};
 use crate::api::models::*;
 use crate::auth::token::TokenStore;
 use reqwest::header::ACCEPT;
@@ -25,7 +25,8 @@ impl ApiClient {
         body: Option<&serde_json::Value>,
         token: &str,
     ) -> RequestBuilder {
-        let mut req = self.http
+        let mut req = self
+            .http
             .request(method.clone(), url)
             .bearer_auth(token)
             // Accept: application/json on every request so the ASP.NET content
@@ -57,7 +58,11 @@ impl ApiClient {
         url: &str,
         body: Option<&serde_json::Value>,
     ) -> Result<(StatusCode, String), ApiError> {
-        let token = self.tokens.bearer().await.map_err(|e| ApiError::Auth(e.to_string()))?;
+        let token = self
+            .tokens
+            .bearer()
+            .await
+            .map_err(|e| ApiError::Auth(e.to_string()))?;
         let resp = self.build_request(method, url, body, &token).send().await?;
         let status = resp.status();
         let text = resp.text().await?;
@@ -129,7 +134,8 @@ impl ApiClient {
     }
 
     pub async fn get_endpoint(&self, id: &str) -> Result<GetWebhookEndpointDto, ApiError> {
-        self.send(Method::GET, &format!("/v2/webhooks/endpoints/{id}"), None).await
+        self.send(Method::GET, &format!("/v2/webhooks/endpoints/{id}"), None)
+            .await
     }
 
     pub async fn create_endpoint(
@@ -158,26 +164,48 @@ impl ApiClient {
     }
 
     pub async fn delete_endpoint(&self, id: &str) -> Result<(), ApiError> {
-        self.send_no_body(Method::DELETE, &format!("/v2/webhooks/endpoints/{id}")).await
+        self.send_no_body(Method::DELETE, &format!("/v2/webhooks/endpoints/{id}"))
+            .await
     }
 
     pub async fn ping_endpoint(&self, id: &str) -> Result<PingResponseDto, ApiError> {
-        self.send(Method::POST, &format!("/v2/webhooks/endpoints/{id}/ping"), None).await
+        self.send(
+            Method::POST,
+            &format!("/v2/webhooks/endpoints/{id}/ping"),
+            None,
+        )
+        .await
     }
 
     pub async fn list_event_types(&self) -> Result<ListEventTypesDto, ApiError> {
-        self.send(Method::GET, "/v2/webhooks/event-types", None).await
+        self.send(Method::GET, "/v2/webhooks/event-types", None)
+            .await
     }
 
     pub async fn list_delivery_logs(&self, limit: u32) -> Result<ListDeliveryLogsDto, ApiError> {
-        self.send(Method::GET, &format!("/v2/webhooks/delivery-logs?limit={limit}"), None).await
+        self.send(
+            Method::GET,
+            &format!("/v2/webhooks/delivery-logs?limit={limit}"),
+            None,
+        )
+        .await
     }
 
     pub async fn get_delivery_log(&self, id: &str) -> Result<DeliveryLogDetailDto, ApiError> {
-        self.send(Method::GET, &format!("/v2/webhooks/delivery-logs/{id}"), None).await
+        self.send(
+            Method::GET,
+            &format!("/v2/webhooks/delivery-logs/{id}"),
+            None,
+        )
+        .await
     }
 
     pub async fn retry_delivery(&self, id: &str) -> Result<serde_json::Value, ApiError> {
-        self.send(Method::POST, &format!("/v2/webhooks/delivery-logs/{id}/retry"), None).await
+        self.send(
+            Method::POST,
+            &format!("/v2/webhooks/delivery-logs/{id}/retry"),
+            None,
+        )
+        .await
     }
 }

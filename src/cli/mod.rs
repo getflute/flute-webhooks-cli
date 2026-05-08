@@ -11,7 +11,11 @@ pub mod output;
 pub mod webhooks;
 
 #[derive(Parser, Debug)]
-#[command(name = "flute-webhook", version, about = "Flute Webhooks TUI and helpers")]
+#[command(
+    name = "flute-webhook",
+    version,
+    about = "Flute Webhooks TUI and helpers"
+)]
 pub struct Cli {
     #[arg(long, env = "FLUTE_PROFILE", default_value = "uat", global = true)]
     pub profile: String,

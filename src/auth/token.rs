@@ -21,19 +21,26 @@ pub trait Fetcher {
 
 impl TokenStore {
     pub fn new(fetcher: Arc<dyn Fetcher + Send + Sync>) -> Self {
-        Self { inner: Arc::new(Mutex::new(None)), fetcher }
+        Self {
+            inner: Arc::new(Mutex::new(None)),
+            fetcher,
+        }
     }
 
     pub async fn bearer(&self) -> anyhow::Result<String> {
         let mut guard = self.inner.lock().await;
         if let Some(cached) = guard.as_ref() {
             // Refresh 60s before actual expiry
-            if cached.expires_at.saturating_duration_since(Instant::now()) > Duration::from_secs(60) {
+            if cached.expires_at.saturating_duration_since(Instant::now()) > Duration::from_secs(60)
+            {
                 return Ok(cached.bearer.clone());
             }
         }
         let (bearer, ttl) = self.fetcher.fetch().await?;
-        let cached = CachedToken { bearer: bearer.clone(), expires_at: Instant::now() + ttl };
+        let cached = CachedToken {
+            bearer: bearer.clone(),
+            expires_at: Instant::now() + ttl,
+        };
         *guard = Some(cached);
         Ok(bearer)
     }
@@ -64,16 +71,19 @@ struct TokenResp {
 #[async_trait::async_trait]
 impl Fetcher for OAuth2Fetcher {
     async fn fetch(&self) -> anyhow::Result<(String, Duration)> {
-        let resp: TokenResp = self.http
+        let resp: TokenResp = self
+            .http
             .post(&self.oauth_url)
             .form(&[
                 ("grant_type", "client_credentials"),
                 ("client_id", &self.client_id),
                 ("client_secret", &self.client_secret),
             ])
-            .send().await?
+            .send()
+            .await?
             .error_for_status()?
-            .json().await?;
+            .json()
+            .await?;
         Ok((resp.access_token, Duration::from_secs(resp.expires_in)))
     }
 }
@@ -98,7 +108,10 @@ mod tests {
 
     #[tokio::test]
     async fn caches_token_within_validity() {
-        let fetcher = Arc::new(CountingFetcher { calls: AtomicUsize::new(0), ttl: Duration::from_secs(3600) });
+        let fetcher = Arc::new(CountingFetcher {
+            calls: AtomicUsize::new(0),
+            ttl: Duration::from_secs(3600),
+        });
         let store = TokenStore::new(fetcher.clone());
         assert_eq!(store.bearer().await.unwrap(), "token-0");
         assert_eq!(store.bearer().await.unwrap(), "token-0");
@@ -107,7 +120,10 @@ mod tests {
 
     #[tokio::test]
     async fn invalidate_forces_a_refetch_on_next_bearer_call() {
-        let fetcher = Arc::new(CountingFetcher { calls: AtomicUsize::new(0), ttl: Duration::from_secs(3600) });
+        let fetcher = Arc::new(CountingFetcher {
+            calls: AtomicUsize::new(0),
+            ttl: Duration::from_secs(3600),
+        });
         let store = TokenStore::new(fetcher.clone());
         assert_eq!(store.bearer().await.unwrap(), "token-0");
         // Cache is still valid by TTL — without invalidate this would reuse token-0.
@@ -118,7 +134,10 @@ mod tests {
 
     #[tokio::test]
     async fn refreshes_when_within_60s_of_expiry() {
-        let fetcher = Arc::new(CountingFetcher { calls: AtomicUsize::new(0), ttl: Duration::from_secs(30) });
+        let fetcher = Arc::new(CountingFetcher {
+            calls: AtomicUsize::new(0),
+            ttl: Duration::from_secs(30),
+        });
         let store = TokenStore::new(fetcher.clone());
         assert_eq!(store.bearer().await.unwrap(), "token-0");
         // 30s ttl is below the 60s safety margin, so the next call refreshes
@@ -127,7 +146,7 @@ mod tests {
 
     #[tokio::test]
     async fn oauth2_fetcher_parses_token_response() {
-        use wiremock::{matchers::method, MockServer, Mock, ResponseTemplate};
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -135,7 +154,8 @@ mod tests {
                 "expires_in": 3600,
                 "token_type": "Bearer"
             })))
-            .mount(&server).await;
+            .mount(&server)
+            .await;
 
         let fetcher = OAuth2Fetcher {
             oauth_url: format!("{}/oauth2/token", server.uri()),

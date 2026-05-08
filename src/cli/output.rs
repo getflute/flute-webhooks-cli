@@ -6,8 +6,8 @@
 //!     we don't pull in `comfy-table` for a few CLI helpers.
 
 use crate::api::models::{
-    DeliveryLogDetailDto, GetWebhookEndpointDto, PingResponseDto,
-    WebhookDeliveryLogStatus, WebhookEndpointStatus,
+    DeliveryLogDetailDto, GetWebhookEndpointDto, PingResponseDto, WebhookDeliveryLogStatus,
+    WebhookEndpointStatus,
 };
 use crate::cli::OutputFormat;
 use crate::domain::{DeliveryLog, EventTypeMeta};
@@ -39,24 +39,40 @@ fn fit(s: &str, width: usize) -> String {
 }
 
 pub fn print_endpoints(eps: &[GetWebhookEndpointDto], fmt: OutputFormat) -> anyhow::Result<()> {
-    if maybe_print_json(eps, fmt)? { return Ok(()); }
+    if maybe_print_json(eps, fmt)? {
+        return Ok(());
+    }
     let mut out = std::io::stdout().lock();
-    writeln!(out, "{}  {}  {}  {}",
-        fit("ID", 36), fit("NAME", 24), fit("URL", 50), fit("STATUS", 8))?;
+    writeln!(
+        out,
+        "{}  {}  {}  {}",
+        fit("ID", 36),
+        fit("NAME", 24),
+        fit("URL", 50),
+        fit("STATUS", 8)
+    )?;
     writeln!(out, "{}", "-".repeat(36 + 24 + 50 + 8 + 6))?;
     for ep in eps {
-        let status = match ep.status { WebhookEndpointStatus::Active => "Active", WebhookEndpointStatus::Inactive => "Inactive" };
-        writeln!(out, "{}  {}  {}  {}",
+        let status = match ep.status {
+            WebhookEndpointStatus::Active => "Active",
+            WebhookEndpointStatus::Inactive => "Inactive",
+        };
+        writeln!(
+            out,
+            "{}  {}  {}  {}",
             fit(&ep.id, 36),
             fit(ep.name.as_deref().unwrap_or(""), 24),
             fit(ep.endpoint_url.as_deref().unwrap_or(""), 50),
-            fit(status, 8))?;
+            fit(status, 8)
+        )?;
     }
     Ok(())
 }
 
 pub fn print_endpoint(ep: &GetWebhookEndpointDto, fmt: OutputFormat) -> anyhow::Result<()> {
-    if maybe_print_json(ep, fmt)? { return Ok(()); }
+    if maybe_print_json(ep, fmt)? {
+        return Ok(());
+    }
     println!("ID:        {}", ep.id);
     println!("Name:      {}", ep.name.as_deref().unwrap_or(""));
     println!("URL:       {}", ep.endpoint_url.as_deref().unwrap_or(""));
@@ -64,15 +80,23 @@ pub fn print_endpoint(ep: &GetWebhookEndpointDto, fmt: OutputFormat) -> anyhow::
     if let Some(types) = &ep.event_types {
         println!("Events:    {}", types.join(", "));
     }
-    if let Some(t) = ep.created_on { println!("Created:   {t}"); }
-    if let Some(t) = ep.modified_on { println!("Modified:  {t}"); }
+    if let Some(t) = ep.created_on {
+        println!("Created:   {t}");
+    }
+    if let Some(t) = ep.modified_on {
+        println!("Modified:  {t}");
+    }
     Ok(())
 }
 
 pub fn print_event_types(types: &[EventTypeMeta], fmt: OutputFormat) -> anyhow::Result<()> {
-    if maybe_print_json(types, fmt)? { return Ok(()); }
+    if maybe_print_json(types, fmt)? {
+        return Ok(());
+    }
     let mut by_group: std::collections::BTreeMap<&str, Vec<&EventTypeMeta>> = Default::default();
-    for et in types { by_group.entry(et.group.as_str()).or_default().push(et); }
+    for et in types {
+        by_group.entry(et.group.as_str()).or_default().push(et);
+    }
     let mut out = std::io::stdout().lock();
     for (group, members) in by_group {
         writeln!(out, "[{group}]")?;
@@ -95,30 +119,45 @@ pub fn print_delivery_logs(
     if fmt == OutputFormat::Json {
         // Wrap into a {items, total} envelope so json output mirrors the API.
         #[derive(Serialize)]
-        struct Wrapper<'a> { items: &'a [DeliveryLog], total: Option<i32> }
+        struct Wrapper<'a> {
+            items: &'a [DeliveryLog],
+            total: Option<i32>,
+        }
         let s = serde_json::to_string_pretty(&Wrapper { items: logs, total })?;
         println!("{s}");
         return Ok(());
     }
     let mut out = std::io::stdout().lock();
-    writeln!(out, "{}  {}  {}  {}  {}  {}",
+    writeln!(
+        out,
+        "{}  {}  {}  {}  {}  {}",
         fit("TIMESTAMP", 19),
         fit("EVENT TYPE", 30),
         fit("STATUS", 8),
         fit("HTTP", 5),
         fit("DUR", 8),
-        fit("ID", 36))?;
+        fit("ID", 36)
+    )?;
     writeln!(out, "{}", "-".repeat(19 + 30 + 8 + 5 + 8 + 36 + 10))?;
     for l in logs {
-        let status = match l.status { WebhookDeliveryLogStatus::Success => "Success", WebhookDeliveryLogStatus::Failure => "Failed" };
-        let http = l.response_status_code.map(|s| s.to_string()).unwrap_or_else(|| "—".into());
-        writeln!(out, "{}  {}  {}  {}  {}  {}",
+        let status = match l.status {
+            WebhookDeliveryLogStatus::Success => "Success",
+            WebhookDeliveryLogStatus::Failure => "Failed",
+        };
+        let http = l
+            .response_status_code
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "—".into());
+        writeln!(
+            out,
+            "{}  {}  {}  {}  {}  {}",
             fit(&l.created_on.format("%Y-%m-%d %H:%M:%S").to_string(), 19),
             fit(&l.event_type, 30),
             fit(status, 8),
             fit(&http, 5),
             fit(&format!("{}ms", l.duration_ms), 8),
-            fit(&l.id, 36))?;
+            fit(&l.id, 36)
+        )?;
     }
     if let Some(t) = total {
         writeln!(out, "\n{} of {} total", logs.len(), t)?;
@@ -127,18 +166,28 @@ pub fn print_delivery_logs(
 }
 
 pub fn print_delivery_log(log: &DeliveryLogDetailDto, fmt: OutputFormat) -> anyhow::Result<()> {
-    if maybe_print_json(log, fmt)? { return Ok(()); }
+    if maybe_print_json(log, fmt)? {
+        return Ok(());
+    }
     println!("ID:        {}", log.id);
-    println!("Endpoint:  {} ({})",
+    println!(
+        "Endpoint:  {} ({})",
         log.webhook_name.as_deref().unwrap_or(""),
-        log.webhook_endpoint_id);
-    println!("Event:     {} (id={})",
+        log.webhook_endpoint_id
+    );
+    println!(
+        "Event:     {} (id={})",
         log.event_type.as_deref().unwrap_or(""),
-        log.event_id);
-    println!("Status:    {:?}  HTTP={:?}  Duration={}ms  Attempt={}",
-        log.status, log.response_status_code, log.duration_ms, log.attempt_number);
+        log.event_id
+    );
+    println!(
+        "Status:    {:?}  HTTP={:?}  Duration={}ms  Attempt={}",
+        log.status, log.response_status_code, log.duration_ms, log.attempt_number
+    );
     println!("Created:   {}", log.created_on);
-    if let Some(err) = &log.error_message { println!("Error:     {err}"); }
+    if let Some(err) = &log.error_message {
+        println!("Error:     {err}");
+    }
     println!();
     println!("--- Request headers ---");
     if let Some(h) = &log.request_headers {
@@ -165,11 +214,17 @@ pub fn print_delivery_log(log: &DeliveryLogDetailDto, fmt: OutputFormat) -> anyh
 }
 
 pub fn print_ping(p: &PingResponseDto, fmt: OutputFormat) -> anyhow::Result<()> {
-    if maybe_print_json(p, fmt)? { return Ok(()); }
+    if maybe_print_json(p, fmt)? {
+        return Ok(());
+    }
     println!("Success:   {}", p.success);
-    if let Some(c) = p.status_code { println!("Status:    {c}"); }
+    if let Some(c) = p.status_code {
+        println!("Status:    {c}");
+    }
     println!("Duration:  {}ms", p.duration_ms);
-    if let Some(e) = &p.error_message { println!("Error:     {e}"); }
+    if let Some(e) = &p.error_message {
+        println!("Error:     {e}");
+    }
     Ok(())
 }
 

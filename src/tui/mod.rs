@@ -6,38 +6,47 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use crossterm::{
     event::{self, Event},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::prelude::*;
 use tokio::sync::{mpsc, watch};
 
 use crate::api::ApiClient;
-use crate::auth::{keychain, token::{OAuth2Fetcher, TokenStore}};
-use crate::config::{self, validate_poll_interval, Profile};
+use crate::auth::{
+    keychain,
+    token::{OAuth2Fetcher, TokenStore},
+};
+use crate::config::{self, Profile, validate_poll_interval};
 use crate::poller::{self, CadenceMode, PollerEvent};
 use crate::tui::app::{App, AppAction};
 
 pub async fn run(profile_name: &str) -> anyhow::Result<()> {
-    let profile = Profile::by_name(profile_name)
-        .ok_or_else(|| anyhow!("unknown profile: {profile_name}"))?;
+    let profile =
+        Profile::by_name(profile_name).ok_or_else(|| anyhow!("unknown profile: {profile_name}"))?;
     let cfg = config::load_or_default();
     let validated = validate_poll_interval(cfg.poll_interval_seconds);
 
-    let (id, secret) = keychain::load_with_env_fallback(profile_name)?
-        .ok_or_else(|| anyhow!("no credentials for [{profile_name}]; run `flute-webhook auth login`"))?;
+    let (id, secret) = keychain::load_with_env_fallback(profile_name)?.ok_or_else(|| {
+        anyhow!("no credentials for [{profile_name}]; run `flute-webhook auth login`")
+    })?;
 
-    let http = reqwest::Client::builder().timeout(Duration::from_secs(15)).build()?;
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()?;
     let fetcher = Arc::new(OAuth2Fetcher {
         oauth_url: profile.oauth_url.clone(),
-        client_id: id, client_secret: secret, http: http.clone(),
+        client_id: id,
+        client_secret: secret,
+        http: http.clone(),
     });
     let api = ApiClient {
         base_url: profile.api_base_url.clone(),
-        http, tokens: TokenStore::new(fetcher),
+        http,
+        tokens: TokenStore::new(fetcher),
     };
 
     let (cadence_tx, cadence_rx) = watch::channel(CadenceMode::Active);
@@ -64,7 +73,15 @@ pub async fn run(profile_name: &str) -> anyhow::Result<()> {
 
     let mut app = App::new(validated.warning);
 
-    let res = event_loop(&mut terminal, &mut app, &mut events_rx, &mut outcome_rx, &cadence_tx, &action_tx).await;
+    let res = event_loop(
+        &mut terminal,
+        &mut app,
+        &mut events_rx,
+        &mut outcome_rx,
+        &cadence_tx,
+        &action_tx,
+    )
+    .await;
 
     disable_raw_mode().ok();
     execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
@@ -99,14 +116,17 @@ async fn event_loop(
                 PollerEvent::Error(e) => app.last_error = Some(format!("Poll error: {e}")),
             }
         }
-        while let Ok(o) = outcome_rx.try_recv() { app.apply_outcome(o); }
+        while let Ok(o) = outcome_rx.try_recv() {
+            app.apply_outcome(o);
+        }
 
         if event::poll(Duration::from_millis(100))?
             && let Event::Key(key) = event::read()?
         {
             let action = app.handle_key(key);
             if !matches!(action, AppAction::None)
-                && let Err(tokio::sync::mpsc::error::TrySendError::Full(_)) = action_tx.try_send(action)
+                && let Err(tokio::sync::mpsc::error::TrySendError::Full(_)) =
+                    action_tx.try_send(action)
             {
                 app.show_toast("Busy — try again in a moment");
             }
@@ -114,13 +134,19 @@ async fn event_loop(
         app.tick_toast();
 
         let mode = app.cadence_mode();
-        if mode != last_mode { let _ = cadence_tx.send(mode); last_mode = mode; }
+        if mode != last_mode {
+            let _ = cadence_tx.send(mode);
+            last_mode = mode;
+        }
     }
     Ok(())
 }
 
-async fn execute_action(api: &ApiClient, action: AppAction,
-    outcome_tx: &mpsc::Sender<crate::tui::app::ActionOutcome>) {
+async fn execute_action(
+    api: &ApiClient,
+    action: AppAction,
+    outcome_tx: &mpsc::Sender<crate::tui::app::ActionOutcome>,
+) {
     use crate::tui::app::ActionOutcome;
     match action {
         AppAction::Create(req) => match api.create_endpoint(&req).await {
@@ -128,21 +154,39 @@ async fn execute_action(api: &ApiClient, action: AppAction,
                 let secret = resp.secret.unwrap_or_else(|| "(none returned)".into());
                 let _ = outcome_tx.send(ActionOutcome::Created { secret }).await;
             }
-            Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
+            Err(e) => {
+                let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await;
+            }
         },
         AppAction::Update(id, req) => match api.update_endpoint(&id, &req).await {
             // Updated closes the form modal AND toasts so the user gets clear
             // feedback that Save Changes succeeded.
-            Ok(_) => { let _ = outcome_tx.send(ActionOutcome::Updated).await; }
-            Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
+            Ok(_) => {
+                let _ = outcome_tx.send(ActionOutcome::Updated).await;
+            }
+            Err(e) => {
+                let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await;
+            }
         },
         AppAction::Delete(id) => match api.delete_endpoint(&id).await {
-            Ok(_) => { let _ = outcome_tx.send(ActionOutcome::Toast("Webhook deleted".into())).await; }
-            Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
+            Ok(_) => {
+                let _ = outcome_tx
+                    .send(ActionOutcome::Toast("Webhook deleted".into()))
+                    .await;
+            }
+            Err(e) => {
+                let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await;
+            }
         },
         AppAction::OpenDetails(id) => match api.get_delivery_log(&id).await {
-            Ok(d) => { let _ = outcome_tx.send(ActionOutcome::DeliveryDetail(Box::new(d))).await; }
-            Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
+            Ok(d) => {
+                let _ = outcome_tx
+                    .send(ActionOutcome::DeliveryDetail(Box::new(d)))
+                    .await;
+            }
+            Err(e) => {
+                let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await;
+            }
         },
         AppAction::ForwardLog { log_id, url } => {
             // Forward errors are best-effort — they emit warn-level tracing
@@ -150,15 +194,18 @@ async fn execute_action(api: &ApiClient, action: AppAction,
             // surface to the user as modal errors. Listeners go up and down
             // and we don't want a flaky dev server to spam red banners.
             if let Err(e) = crate::forward::forward_log(&api.http, api, &log_id, &url).await {
-                let _ = outcome_tx.send(ActionOutcome::Toast(format!(
-                    "Forward failed: {e}"
-                ))).await;
+                let _ = outcome_tx
+                    .send(ActionOutcome::Toast(format!("Forward failed: {e}")))
+                    .await;
             }
         }
         AppAction::PingEndpoint(id) => match api.ping_endpoint(&id).await {
             Ok(p) => {
                 let msg = if p.success {
-                    let code = p.status_code.map(|c| c.to_string()).unwrap_or_else(|| "—".into());
+                    let code = p
+                        .status_code
+                        .map(|c| c.to_string())
+                        .unwrap_or_else(|| "—".into());
                     format!("Ping OK: HTTP {code} in {}ms", p.duration_ms)
                 } else {
                     let err = p.error_message.unwrap_or_else(|| "no detail".into());
@@ -166,14 +213,20 @@ async fn execute_action(api: &ApiClient, action: AppAction,
                 };
                 let _ = outcome_tx.send(ActionOutcome::Toast(msg)).await;
             }
-            Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
+            Err(e) => {
+                let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await;
+            }
         },
         AppAction::RetryDelivery(id) => match api.retry_delivery(&id).await {
             Ok(_) => {
                 let prefix = id.get(..8.min(id.len())).unwrap_or("");
-                let _ = outcome_tx.send(ActionOutcome::Toast(format!("Retry queued for {prefix}…"))).await;
+                let _ = outcome_tx
+                    .send(ActionOutcome::Toast(format!("Retry queued for {prefix}…")))
+                    .await;
             }
-            Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
+            Err(e) => {
+                let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await;
+            }
         },
         AppAction::None => {}
     }

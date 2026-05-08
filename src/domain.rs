@@ -2,8 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::api::models::{
-    DeliveryLogSummaryDto, EventTypeDto, GetWebhookEndpointDto,
-    WebhookDeliveryLogStatus, WebhookEndpointStatus,
+    DeliveryLogSummaryDto, EventTypeDto, GetWebhookEndpointDto, WebhookDeliveryLogStatus,
+    WebhookEndpointStatus,
 };
 
 #[derive(Debug, Clone, Serialize)]

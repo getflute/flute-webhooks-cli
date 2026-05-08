@@ -29,7 +29,10 @@ pub struct ValidatedPoll {
 
 pub fn validate_poll_interval(raw: u64) -> ValidatedPoll {
     if (POLL_MIN..=POLL_MAX).contains(&raw) {
-        ValidatedPoll { seconds: raw, warning: None }
+        ValidatedPoll {
+            seconds: raw,
+            warning: None,
+        }
     } else {
         ValidatedPoll {
             seconds: POLL_DEFAULT,
@@ -41,7 +44,9 @@ pub fn validate_poll_interval(raw: u64) -> ValidatedPoll {
 }
 
 pub fn config_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join(".flute")
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".flute")
 }
 
 pub fn config_path() -> PathBuf {
@@ -145,14 +150,20 @@ mod profile_tests {
     fn uat_profile_has_uat_hosts() {
         let p = Profile::uat();
         assert_eq!(p.api_base_url, "https://api.uat.arise.risewithaurora.com");
-        assert_eq!(p.oauth_url, "https://oauth.uat.arise.risewithaurora.com/oauth2/token");
+        assert_eq!(
+            p.oauth_url,
+            "https://oauth.uat.arise.risewithaurora.com/oauth2/token"
+        );
     }
 
     #[test]
     fn production_profile_has_prod_hosts() {
         let p = Profile::production();
         assert_eq!(p.api_base_url, "https://api.arise.risewithaurora.com");
-        assert_eq!(p.oauth_url, "https://oauth.arise.risewithaurora.com/oauth2/token");
+        assert_eq!(
+            p.oauth_url,
+            "https://oauth.arise.risewithaurora.com/oauth2/token"
+        );
     }
 
     #[test]
@@ -164,9 +175,12 @@ mod profile_tests {
             let trimmed = p.api_base_url.trim_end_matches('/');
             let path_idx = trimmed.find("//").map(|i| i + 2).unwrap_or(0);
             let after_host = &trimmed[path_idx..];
-            assert!(!after_host.contains('/'),
+            assert!(
+                !after_host.contains('/'),
                 "profile {} must have no path on its api_base_url: got {}",
-                p.name, p.api_base_url);
+                p.name,
+                p.api_base_url
+            );
         }
     }
 

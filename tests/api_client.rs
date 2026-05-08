@@ -1,9 +1,12 @@
-use std::sync::Arc;
-use std::time::Duration;
 #[allow(unused_imports)]
 use flute_webhook::api::{ApiClient, models::*};
 use flute_webhook::auth::token::{Fetcher, TokenStore};
-use wiremock::{matchers::{header, method, path}, MockServer, Mock, ResponseTemplate};
+use std::sync::Arc;
+use std::time::Duration;
+use wiremock::{
+    Mock, MockServer, ResponseTemplate,
+    matchers::{header, method, path},
+};
 
 struct StaticFetcher;
 #[async_trait::async_trait]
@@ -53,7 +56,8 @@ async fn delete_endpoint_propagates_404() {
 #[tokio::test]
 async fn list_delivery_logs_round_trips() {
     let server = MockServer::start().await;
-    Mock::given(method("GET")).and(path("/v2/webhooks/delivery-logs"))
+    Mock::given(method("GET"))
+        .and(path("/v2/webhooks/delivery-logs"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "items": [{
                 "id":"00000000-0000-0000-0000-00000000000a",
@@ -67,7 +71,8 @@ async fn list_delivery_logs_round_trips() {
             }],
             "total": 1
         })))
-        .mount(&server).await;
+        .mount(&server)
+        .await;
 
     let api = client(server.uri());
     let r = api.list_delivery_logs(500).await.unwrap();
@@ -82,7 +87,9 @@ async fn list_delivery_logs_round_trips() {
 async fn refreshes_token_and_retries_once_on_401() {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    struct CountingFetcher { calls: AtomicUsize }
+    struct CountingFetcher {
+        calls: AtomicUsize,
+    }
     #[async_trait::async_trait]
     impl Fetcher for CountingFetcher {
         async fn fetch(&self) -> anyhow::Result<(String, Duration)> {
@@ -94,14 +101,17 @@ async fn refreshes_token_and_retries_once_on_401() {
     let server = MockServer::start().await;
 
     // First call to GET /v2/webhooks/endpoints returns 401.
-    Mock::given(method("GET")).and(path("/v2/webhooks/endpoints"))
+    Mock::given(method("GET"))
+        .and(path("/v2/webhooks/endpoints"))
         .respond_with(ResponseTemplate::new(401))
         .up_to_n_times(1)
-        .mount(&server).await;
+        .mount(&server)
+        .await;
 
     // Subsequent calls return 200 with one endpoint. Mounted second so
     // wiremock matches the up_to_n_times(1) entry first.
-    Mock::given(method("GET")).and(path("/v2/webhooks/endpoints"))
+    Mock::given(method("GET"))
+        .and(path("/v2/webhooks/endpoints"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "data": [{
                 "id":"00000000-0000-0000-0000-000000000099","name":"after-refresh",
@@ -109,9 +119,12 @@ async fn refreshes_token_and_retries_once_on_401() {
                 "createdOn":"2026-05-04T12:00:00Z","modifiedOn":"2026-05-04T12:00:00Z"
             }]
         })))
-        .mount(&server).await;
+        .mount(&server)
+        .await;
 
-    let counter = Arc::new(CountingFetcher { calls: AtomicUsize::new(0) });
+    let counter = Arc::new(CountingFetcher {
+        calls: AtomicUsize::new(0),
+    });
     let api = ApiClient {
         base_url: server.uri(),
         http: reqwest::Client::new(),
@@ -119,16 +132,21 @@ async fn refreshes_token_and_retries_once_on_401() {
     };
 
     // The 401 must NOT be surfaced — the retry succeeded.
-    let r = api.list_endpoints().await.expect("list_endpoints should succeed via retry");
+    let r = api
+        .list_endpoints()
+        .await
+        .expect("list_endpoints should succeed via retry");
     let data = r.data.expect("data should be present after retry");
     assert_eq!(data.len(), 1);
     assert_eq!(data[0].name.as_deref(), Some("after-refresh"));
 
     // Token was fetched twice: once originally, once after the 401 invalidation.
-    assert_eq!(counter.calls.load(Ordering::SeqCst), 2,
-        "expected exactly 2 token fetches (initial + post-401 refresh)");
+    assert_eq!(
+        counter.calls.load(Ordering::SeqCst),
+        2,
+        "expected exactly 2 token fetches (initial + post-401 refresh)"
+    );
 }
-
 
 /// The Flute API rejects bodyless POSTs without `Content-Length: 0`. The ping
 /// and retry endpoints both hit this — make sure we always emit the header
@@ -146,12 +164,15 @@ async fn bodyless_post_sends_content_length_zero() {
             "errorMessage": null
         })))
         .expect(1)
-        .mount(&server).await;
+        .mount(&server)
+        .await;
 
     let api = ApiClient {
         base_url: server.uri(),
         http: reqwest::Client::new(),
         tokens: TokenStore::new(Arc::new(StaticFetcher)),
     };
-    api.ping_endpoint("ep-1").await.expect("ping should succeed with Content-Length: 0");
+    api.ping_endpoint("ep-1")
+        .await
+        .expect("ping should succeed with Content-Length: 0");
 }

@@ -60,12 +60,12 @@ fn is_backoff_eligible(err: &ApiError) -> bool {
 /// consecutive failures. Doubles per failure, capped at max(MAX_BACKOFF_SECS,
 /// base.as_secs()) so a slower configured base never gets sped up under error.
 fn backoff_seconds(base: Duration, consecutive_failures: u32) -> u64 {
-    if consecutive_failures == 0 { return base.as_secs(); }
+    if consecutive_failures == 0 {
+        return base.as_secs();
+    }
     let exp = consecutive_failures.min(BACKOFF_EXPONENT_CAP);
     let cap = MAX_BACKOFF_SECS.max(base.as_secs());
-    base.as_secs()
-        .saturating_mul(2_u64.pow(exp))
-        .min(cap)
+    base.as_secs().saturating_mul(2_u64.pow(exp)).min(cap)
 }
 
 struct PollError {
@@ -82,9 +82,16 @@ pub fn spawn(
     tokio::spawn(async move {
         // One-time fetch of event types — they don't change often
         let event_types = match api.list_event_types().await {
-            Ok(v) => v.data.unwrap_or_default().into_iter().map(EventTypeMeta::from).collect(),
+            Ok(v) => v
+                .data
+                .unwrap_or_default()
+                .into_iter()
+                .map(EventTypeMeta::from)
+                .collect(),
             Err(e) => {
-                let _ = tx.send(PollerEvent::Error(format!("event-types: {e}"))).await;
+                let _ = tx
+                    .send(PollerEvent::Error(format!("event-types: {e}")))
+                    .await;
                 Vec::new()
             }
         };
@@ -127,8 +134,12 @@ pub fn spawn(
 
 async fn wait_for_cadence_change(mut rx: watch::Receiver<CadenceMode>, current: CadenceMode) {
     loop {
-        if rx.changed().await.is_err() { return; }
-        if *rx.borrow() != current { return; }
+        if rx.changed().await.is_err() {
+            return;
+        }
+        if *rx.borrow() != current {
+            return;
+        }
     }
 }
 
@@ -142,18 +153,26 @@ async fn poll_once(api: &ApiClient, event_types: &[EventTypeMeta]) -> Result<Sna
         message: format!("logs: {e}"),
     })?;
 
-    let endpoints: Vec<Endpoint> = endpoints_resp.data.unwrap_or_default()
-        .into_iter().map(Endpoint::from).collect();
-    let logs: Vec<DeliveryLog> = logs_resp.items.unwrap_or_default()
-        .into_iter().map(DeliveryLog::from).collect();
+    let endpoints: Vec<Endpoint> = endpoints_resp
+        .data
+        .unwrap_or_default()
+        .into_iter()
+        .map(Endpoint::from)
+        .collect();
+    let logs: Vec<DeliveryLog> = logs_resp
+        .items
+        .unwrap_or_default()
+        .into_iter()
+        .map(DeliveryLog::from)
+        .collect();
 
     Ok(Snapshot {
-        endpoints, logs,
+        endpoints,
+        logs,
         event_types: event_types.to_vec(),
         fetched_at: chrono::Utc::now(),
     })
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -162,25 +181,44 @@ mod tests {
 
     #[test]
     fn active_mode_uses_configured_interval() {
-        assert_eq!(current_interval(CadenceMode::Active, 5), Duration::from_secs(5));
-        assert_eq!(current_interval(CadenceMode::Active, 60), Duration::from_secs(60));
+        assert_eq!(
+            current_interval(CadenceMode::Active, 5),
+            Duration::from_secs(5)
+        );
+        assert_eq!(
+            current_interval(CadenceMode::Active, 60),
+            Duration::from_secs(60)
+        );
     }
 
     #[test]
     fn backoff_mode_is_at_least_20s() {
-        assert_eq!(current_interval(CadenceMode::Backoff, 5), Duration::from_secs(POLL_BACKOFF_SECS));
-        assert_eq!(current_interval(CadenceMode::Backoff, 10), Duration::from_secs(POLL_BACKOFF_SECS));
+        assert_eq!(
+            current_interval(CadenceMode::Backoff, 5),
+            Duration::from_secs(POLL_BACKOFF_SECS)
+        );
+        assert_eq!(
+            current_interval(CadenceMode::Backoff, 10),
+            Duration::from_secs(POLL_BACKOFF_SECS)
+        );
     }
 
     #[test]
     fn backoff_does_not_speed_up_a_slower_configured_interval() {
         // If user configured 30 s, opening a form should not speed polling to 20 s.
-        assert_eq!(current_interval(CadenceMode::Backoff, 30), Duration::from_secs(30));
+        assert_eq!(
+            current_interval(CadenceMode::Backoff, 30),
+            Duration::from_secs(30)
+        );
     }
 
     #[test]
     fn backoff_eligible_for_listed_statuses() {
-        let api = |status: u16| ApiError::Api { status, correlation_id: None, message: String::new() };
+        let api = |status: u16| ApiError::Api {
+            status,
+            correlation_id: None,
+            message: String::new(),
+        };
         assert!(is_backoff_eligible(&api(401)));
         assert!(is_backoff_eligible(&api(403)));
         assert!(is_backoff_eligible(&api(404)));
@@ -196,7 +234,9 @@ mod tests {
     #[test]
     fn backoff_eligible_for_auth_and_decode() {
         // Auth/transport are flaky-network-eligible; Decode is a parser bug.
-        assert!(is_backoff_eligible(&ApiError::Auth("token fetch failed".into())));
+        assert!(is_backoff_eligible(&ApiError::Auth(
+            "token fetch failed".into()
+        )));
         assert!(!is_backoff_eligible(&ApiError::Decode("bad json".into())));
     }
 
@@ -204,9 +244,9 @@ mod tests {
     fn backoff_seconds_doubles_then_caps() {
         // Default 5 s base reaches the 30 s cap on the third consecutive failure.
         let base = Duration::from_secs(5);
-        assert_eq!(backoff_seconds(base, 0), 5);   // no failures: base interval
-        assert_eq!(backoff_seconds(base, 1), 10);  // 5 * 2
-        assert_eq!(backoff_seconds(base, 2), 20);  // 5 * 4
+        assert_eq!(backoff_seconds(base, 0), 5); // no failures: base interval
+        assert_eq!(backoff_seconds(base, 1), 10); // 5 * 2
+        assert_eq!(backoff_seconds(base, 2), 20); // 5 * 4
         assert_eq!(backoff_seconds(base, 3), MAX_BACKOFF_SECS); // 5 * 8 = 40, capped at 30
         assert_eq!(backoff_seconds(base, 4), MAX_BACKOFF_SECS);
         assert_eq!(backoff_seconds(base, 100), MAX_BACKOFF_SECS); // saturates
