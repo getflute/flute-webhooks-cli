@@ -379,6 +379,10 @@ pub enum AppAction {
     OpenDetails(String),
     /// Forward this delivery log's headers + payload to a target URL.
     ForwardLog { log_id: String, url: String },
+    /// Send a test ping to the given endpoint id.
+    PingEndpoint(String),
+    /// Retry a failed delivery (single-shot — no automatic retry chain).
+    RetryDelivery(String),
 }
 
 impl App {
@@ -448,6 +452,14 @@ impl App {
                 self.modal = ModalState::DeleteWebhook(self.selected_endpoint);
                 AppAction::None
             }
+            // Send a test ping to the selected endpoint. The result lands in
+            // the toast via ActionOutcome::Toast / ::Error.
+            KeyCode::Char('p') if n > 0 => {
+                let id = self.endpoints[self.selected_endpoint].id.clone();
+                let prefix = id.get(..8.min(id.len())).unwrap_or("").to_string();
+                self.show_toast(format!("Pinging {prefix}…"));
+                AppAction::PingEndpoint(id)
+            }
             _ => AppAction::None,
         }
     }
@@ -491,6 +503,21 @@ impl App {
             KeyCode::Char('3') => {
                 self.filter_status = (self.filter_status + 1) % 3;
                 self.selected_log = 0; AppAction::None
+            }
+            // Manually retry the selected delivery. Only meaningful on
+            // failed deliveries — the API rejects retries on Success rows.
+            KeyCode::Char('r') if n > 0 => {
+                let (log_id, log_status) = {
+                    let log = &self.logs[filtered[self.selected_log]];
+                    (log.id.clone(), log.status)
+                };
+                if log_status != WebhookDeliveryLogStatus::Failure {
+                    self.show_toast("Retry only works on failed deliveries");
+                    return AppAction::None;
+                }
+                let prefix = log_id.get(..8.min(log_id.len())).unwrap_or("").to_string();
+                self.show_toast(format!("Retrying {prefix}…"));
+                AppAction::RetryDelivery(log_id)
             }
             KeyCode::Char('s') => { self.sort_ascending = !self.sort_ascending; AppAction::None }
             KeyCode::Char('x') => {
@@ -1228,6 +1255,50 @@ mod tests {
         app.logs = vec![fake_log("the-log", WebhookDeliveryLogStatus::Success)];
         // listener_url is None
         let kp = KeyEvent { code: KeyCode::Char('t'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        let action = app.handle_key(kp);
+        assert!(matches!(action, AppAction::None));
+        assert!(app.toast_message.is_some());
+    }
+
+    #[test]
+    fn p_on_endpoints_emits_ping_action() {
+        let mut app = App::new(None);
+        app.screen = Screen::Endpoints;
+        app.endpoints = vec![crate::domain::Endpoint {
+            id: "ep-42".into(),
+            name: "ep".into(),
+            endpoint_url: "https://x".into(),
+            event_types: vec![],
+            status: WebhookEndpointStatus::Active,
+            created_on: None,
+        }];
+        let kp = KeyEvent { code: KeyCode::Char('p'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        match app.handle_key(kp) {
+            AppAction::PingEndpoint(id) => assert_eq!(id, "ep-42"),
+            other => panic!("expected PingEndpoint, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn r_on_failed_log_emits_retry_action() {
+        let mut app = App::new(None);
+        app.screen = Screen::DeliveryLogs;
+        app.logs = vec![fake_log("dl-1", WebhookDeliveryLogStatus::Failure)];
+        let kp = KeyEvent { code: KeyCode::Char('r'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
+        match app.handle_key(kp) {
+            AppAction::RetryDelivery(id) => assert_eq!(id, "dl-1"),
+            other => panic!("expected RetryDelivery, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn r_on_successful_log_toasts_instead_of_retrying() {
+        // The API rejects retries on Success rows — block locally with a
+        // helpful toast rather than letting the user fire a doomed call.
+        let mut app = App::new(None);
+        app.screen = Screen::DeliveryLogs;
+        app.logs = vec![fake_log("dl-ok", WebhookDeliveryLogStatus::Success)];
+        let kp = KeyEvent { code: KeyCode::Char('r'), modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: crossterm::event::KeyEventState::empty() };
         let action = app.handle_key(kp);
         assert!(matches!(action, AppAction::None));
         assert!(app.toast_message.is_some());

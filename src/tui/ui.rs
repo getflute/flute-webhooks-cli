@@ -107,7 +107,7 @@ fn render_endpoints(frame: &mut Frame, app: &App, area: Rect) {
                 },
                 status_style,
             )),
-            Cell::from("[e]dit [d]el"),
+            Cell::from("[e]dit [d]el [p]ing"),
         ]);
         let _ = i; // index is consumed by TableState; keep loop API compatible.
         row
@@ -159,10 +159,10 @@ fn render_logs(frame: &mut Frame, app: &App, area: Rect) {
             WebhookDeliveryLogStatus::Failure => ("Failed", Color::Red),
         };
         let http = log.response_status_code.map(|s| s.to_string()).unwrap_or_else(|| "—".into());
-        let actions_label = if log.status == WebhookDeliveryLogStatus::Success && app.listener_url.is_some() {
-            "[v]iew [t]rig"
-        } else {
-            "[v]iew"
+        let actions_label = match (log.status, app.listener_url.is_some()) {
+            (WebhookDeliveryLogStatus::Success, true)  => "[v]iew [t]rig",
+            (WebhookDeliveryLogStatus::Success, false) => "[v]iew",
+            (WebhookDeliveryLogStatus::Failure, _)     => "[v]iew [r]etry",
         };
         let row = Row::new(vec![
             Cell::from(log.created_on.format("%m/%d/%y %H:%M:%S").to_string()),
@@ -204,8 +204,8 @@ fn status_filter_label(app: &App) -> &'static str {
 fn render_help_bar(frame: &mut Frame, app: &App, area: Rect) {
     let help = match (&app.modal, &app.screen) {
         (ModalState::None, _) if app.last_error.is_some() => "Enter/Esc: dismiss error",
-        (ModalState::None, Screen::Endpoints) => "Tab: switch | ↑↓/jk: nav | c: create | e: edit | d: delete | q: quit",
-        (ModalState::None, Screen::DeliveryLogs) => "Tab: switch | ↑↓/jk: nav | v: details | t: trigger | l: listener | 1-3: filters | s: sort | x: clear | q: quit",
+        (ModalState::None, Screen::Endpoints) => "Tab: switch | ↑↓/jk: nav | c: create | e: edit | d: delete | p: ping | q: quit",
+        (ModalState::None, Screen::DeliveryLogs) => "Tab: switch | ↑↓/jk: nav | v: details | t: trigger | r: retry | l: listener | 1-3: filters | s: sort | x: clear | q: quit",
         (ModalState::CreateWebhook | ModalState::EditWebhook(_), _) => "Tab/↑↓: fields | ←→: Cancel/Submit | Space: toggle | Enter: activate | PgUp/PgDn: scroll | Esc: cancel",
         (ModalState::DeleteWebhook(_), _) => "y/Enter: confirm | n/Esc: cancel",
         (ModalState::WebhookCreated(_), _) => "Enter/Esc: done",

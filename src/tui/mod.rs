@@ -155,6 +155,26 @@ async fn execute_action(api: &ApiClient, action: AppAction,
                 ))).await;
             }
         }
+        AppAction::PingEndpoint(id) => match api.ping_endpoint(&id).await {
+            Ok(p) => {
+                let msg = if p.success {
+                    let code = p.status_code.map(|c| c.to_string()).unwrap_or_else(|| "—".into());
+                    format!("Ping OK: HTTP {code} in {}ms", p.duration_ms)
+                } else {
+                    let err = p.error_message.unwrap_or_else(|| "no detail".into());
+                    format!("Ping failed in {}ms: {err}", p.duration_ms)
+                };
+                let _ = outcome_tx.send(ActionOutcome::Toast(msg)).await;
+            }
+            Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
+        },
+        AppAction::RetryDelivery(id) => match api.retry_delivery(&id).await {
+            Ok(_) => {
+                let prefix = id.get(..8.min(id.len())).unwrap_or("");
+                let _ = outcome_tx.send(ActionOutcome::Toast(format!("Retry queued for {prefix}…"))).await;
+            }
+            Err(e) => { let _ = outcome_tx.send(ActionOutcome::Error(e.to_string())).await; }
+        },
         AppAction::None => {}
     }
 }
