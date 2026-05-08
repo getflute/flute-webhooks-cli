@@ -3,7 +3,7 @@ use std::time::Duration;
 #[allow(unused_imports)]
 use flute_webhook::api::{ApiClient, models::*};
 use flute_webhook::auth::token::{Fetcher, TokenStore};
-use wiremock::{matchers::{method, path}, MockServer, Mock, ResponseTemplate};
+use wiremock::{matchers::{header, method, path}, MockServer, Mock, ResponseTemplate};
 
 struct StaticFetcher;
 #[async_trait::async_trait]
@@ -129,3 +129,29 @@ async fn refreshes_token_and_retries_once_on_401() {
         "expected exactly 2 token fetches (initial + post-401 refresh)");
 }
 
+
+/// The Flute API rejects bodyless POSTs without `Content-Length: 0`. The ping
+/// and retry endpoints both hit this — make sure we always emit the header
+/// even when there's no JSON payload.
+#[tokio::test]
+async fn bodyless_post_sends_content_length_zero() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v2/webhooks/endpoints/ep-1/ping"))
+        .and(header("content-length", "0"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "success": true,
+            "statusCode": 200,
+            "durationMs": 12,
+            "errorMessage": null
+        })))
+        .expect(1)
+        .mount(&server).await;
+
+    let api = ApiClient {
+        base_url: server.uri(),
+        http: reqwest::Client::new(),
+        tokens: TokenStore::new(Arc::new(StaticFetcher)),
+    };
+    api.ping_endpoint("ep-1").await.expect("ping should succeed with Content-Length: 0");
+}

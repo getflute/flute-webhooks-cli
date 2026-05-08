@@ -33,8 +33,18 @@ impl ApiClient {
             // different format-handler that has its own bugs). Content-Type is
             // set for us by .json() when a body is present.
             .header(ACCEPT, JSON);
-        if let Some(b) = body {
-            req = req.json(b);
+        match (body, method) {
+            (Some(b), _) => {
+                req = req.json(b);
+            }
+            // Bodyless POST/PUT/PATCH: explicitly send an empty body so reqwest
+            // emits Content-Length: 0. The Flute API rejects bodyless POSTs
+            // without it ("POST requests require a Content-length"), which hit
+            // the ping and retry endpoints.
+            (None, m) if matches!(*m, Method::POST | Method::PUT | Method::PATCH) => {
+                req = req.body("").header(reqwest::header::CONTENT_LENGTH, "0");
+            }
+            (None, _) => {}
         }
         req
     }
