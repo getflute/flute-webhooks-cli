@@ -1,63 +1,39 @@
-name: build
+name: release
 
 on:
   push:
-    branches: ["main", "master"]
-    tags: ["v*"]
-  pull_request:
-    branches: ["main", "master"]
+    tags:
+      - 'v*'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    name: ${{ matrix.name }}
+    name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: macOS Apple Silicon
-            os: macos-14
-            target: aarch64-apple-darwin
-            artifact: flute-webhook
-          - name: Linux x86_64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact: flute-webhook
-          - name: Windows x86_64
+          - target: x86_64-pc-windows-msvc
             os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact: flute-webhook.exe
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux build deps
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+
+      - uses: taiki-e/upload-rust-binary-action@v1
         with:
-          targets: ${{ matrix.target }}
-          components: clippy, rustfmt
-
-      - name: Cache cargo registry and build
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Clippy
-        run: cargo clippy --all-targets --target ${{ matrix.target }} -- -D warnings
-
-      - name: Build (release)
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Test
-        run: cargo test --target ${{ matrix.target }}
-
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: flute-webhook-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/${{ matrix.artifact }}
-          if-no-files-found: error
+          bin: flute-webhook
+          target: ${{ matrix.target }}
+          archive: $bin-$tag-$target
+          token: ${{ secrets.GITHUB_TOKEN }}

@@ -203,15 +203,15 @@ Implementation plans: see `docs/superpowers/plans/`.
 
 ## Releases
 
-Tagged releases trigger `.github/workflows/build.yaml`, which builds, tests, and uploads release binaries for three targets:
+Tag pushes matching `v*` trigger `.github/workflows/build.yaml`, which builds release binaries for three targets and attaches them to a GitHub Release:
 
 | Target                  | Runner          | Triple                       |
 |-------------------------|-----------------|------------------------------|
-| macOS Apple Silicon     | `macos-14`      | `aarch64-apple-darwin`       |
+| macOS Apple Silicon     | `macos-latest`  | `aarch64-apple-darwin`       |
 | Linux x86_64            | `ubuntu-latest` | `x86_64-unknown-linux-gnu`   |
 | Windows x86_64          | `windows-latest`| `x86_64-pc-windows-msvc`     |
 
-Each job runs `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build --release`, and `cargo test` against the matching target, then uploads the release binary as an artifact named `flute-webhook-<target>`.
+Each job uses [`taiki-e/upload-rust-binary-action`](https://github.com/taiki-e/upload-rust-binary-action) to build a release binary, archive it as `flute-webhook-<tag>-<target>` (`.tar.gz` on macOS/Linux, `.zip` on Windows), and upload it to the GitHub Release page for the tag. On Linux the runner additionally installs `libdbus-1-dev`/`pkg-config` so the keyring crate's secret-service backend can link.
 
 To cut a release:
 
