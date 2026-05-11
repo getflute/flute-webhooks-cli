@@ -2,7 +2,7 @@
 
 A Rust CLI **and** terminal UI for working with Flute webhooks: manage endpoints, watch delivery logs in real time, retry failures, and forward incoming successful events to a local listener URL. Built with [ratatui](https://ratatui.rs), [reqwest](https://docs.rs/reqwest), [clap](https://docs.rs/clap), and tokio.
 
-![status](https://img.shields.io/badge/status-v0.1.0-blue)
+![status](https://img.shields.io/badge/status-v0.2.0-blue)
 [![build](https://github.com/getflute/flute-webhooks/actions/workflows/build.yaml/badge.svg)](https://github.com/getflute/flute-webhooks/actions/workflows/build.yaml)
 
 ## What it does
