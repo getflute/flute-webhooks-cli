@@ -3,6 +3,7 @@
 A Rust CLI **and** terminal UI for working with Flute webhooks: manage endpoints, watch delivery logs in real time, retry failures, and forward incoming successful events to a local listener URL. Built with [ratatui](https://ratatui.rs), [reqwest](https://docs.rs/reqwest), [clap](https://docs.rs/clap), and tokio.
 
 ![status](https://img.shields.io/badge/status-v0.1.0-blue)
+[![build](https://github.com/getflute/flute-webhooks/actions/workflows/build.yaml/badge.svg)](https://github.com/getflute/flute-webhooks/actions/workflows/build.yaml)
 
 ## What it does
 
@@ -199,6 +200,27 @@ src/
 ```
 
 Implementation plans: see `docs/superpowers/plans/`.
+
+## Releases
+
+Tagged releases trigger `.github/workflows/build.yaml`, which builds, tests, and uploads release binaries for three targets:
+
+| Target                  | Runner          | Triple                       |
+|-------------------------|-----------------|------------------------------|
+| macOS Apple Silicon     | `macos-14`      | `aarch64-apple-darwin`       |
+| Linux x86_64            | `ubuntu-latest` | `x86_64-unknown-linux-gnu`   |
+| Windows x86_64          | `windows-latest`| `x86_64-pc-windows-msvc`     |
+
+Each job runs `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build --release`, and `cargo test` against the matching target, then uploads the release binary as an artifact named `flute-webhook-<target>`.
+
+To cut a release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow only fires on tags matching `v*` (and on manual `workflow_dispatch` from the Actions tab). It does not run on regular pushes or pull requests.
 
 ## Troubleshooting
 
