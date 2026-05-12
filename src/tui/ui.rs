@@ -44,6 +44,13 @@ pub fn render(frame: &mut Frame, app: &App) {
     if let Some(msg) = &app.toast_message {
         render_toast(frame, msg);
     }
+
+    // The update-available modal renders last so it overlays every other
+    // modal. It absorbs all keys while open (see App::handle_key) and
+    // Enter/Esc dismisses it.
+    if let Some(version) = &app.update_notice {
+        modals::render_update_modal(frame, version);
+    }
 }
 
 fn render_tab_bar(frame: &mut Frame, app: &App, area: Rect) {

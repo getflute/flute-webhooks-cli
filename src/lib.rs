@@ -6,8 +6,11 @@ pub mod domain;
 pub mod forward;
 pub mod poller;
 pub mod tui;
+pub mod update;
+pub mod update_check;
 
 use clap::{CommandFactory, Parser};
+use std::io::IsTerminal;
 use std::sync::Mutex;
 
 pub fn run() -> anyhow::Result<()> {
@@ -33,14 +36,57 @@ pub fn run() -> anyhow::Result<()> {
         .build()?;
 
     runtime.block_on(async move {
-        match cmd {
-            cli::Command::Tui => tui::run(&profile).await,
+        // Update check policy: skip entirely for `update` and `auth` (the
+        // user is mid-task and would be surprised by a banner) and when
+        // stderr isn't a TTY (piped output, CI logs). For the TUI we
+        // pre-fetch the result so the modal is ready on the first frame.
+        // For other commands we run the check *after* the command finishes
+        // and print to stderr so JSON on stdout stays clean.
+        let should_check = should_run_update_check(&cmd);
+
+        let pending_tui_notice = if should_check && is_tui {
+            update_check::check_for_update().await
+        } else {
+            None
+        };
+
+        let dispatch_result = match cmd {
+            cli::Command::Tui => tui::run(&profile, pending_tui_notice).await,
             cli::Command::Auth(cli::AuthCommand::Login) => auth_login(&profile).await,
             cli::Command::Auth(cli::AuthCommand::Token) => auth_print_token(&profile).await,
             cli::Command::Listen { forward_to } => listen(&profile, &forward_to).await,
             cli::Command::Webhooks(c) => run_webhooks(&profile, output_fmt, c).await,
+            cli::Command::Update => update::run().await,
+        };
+
+        if should_check
+            && !is_tui
+            && dispatch_result.is_ok()
+            && let Some(version) = update_check::check_for_update().await
+        {
+            eprintln!("\n{}", update_check::notice_for(&version));
         }
+
+        dispatch_result
     })
+}
+
+/// Apply all the opt-out gates for the startup update check. The TUI's pre-
+/// dispatch fetch and the CLI's post-dispatch fetch share this predicate so
+/// the rules don't drift between the two paths.
+fn should_run_update_check(cmd: &cli::Command) -> bool {
+    // Don't check when the user is explicitly invoking `update` or wrangling
+    // credentials — both are tight, single-purpose tasks where a trailing
+    // banner adds noise.
+    if matches!(cmd, cli::Command::Update | cli::Command::Auth(_)) {
+        return false;
+    }
+    // Don't pollute non-interactive output streams.
+    if !std::io::stderr().is_terminal() {
+        return false;
+    }
+    let cfg = config::load_or_default();
+    !update_check::opt_out(&cfg)
 }
 
 /// Build an authenticated ApiClient and dispatch a `webhooks …` subcommand.

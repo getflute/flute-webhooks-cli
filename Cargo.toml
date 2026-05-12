@@ -2,6 +2,11 @@
 name = "flute-webhooks"
 version = "0.2.0"
 edition = "2024"
+description = "Terminal UI and CLI for managing Flute webhook endpoints"
+repository = "https://github.com/getflute/flute-webhooks"
+homepage = "https://github.com/getflute/flute-webhooks"
+license = "MIT"
+readme = "readme.md"
 
 [[bin]]
 name = "flute-webhook"
@@ -30,9 +35,15 @@ rpassword = "7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
+axoupdater = { version = "0.10.0", default-features = false, features = ["tokio", "github_releases"] }
 
 [dev-dependencies]
 wiremock = "0.6"
 tempfile = "3"
 pretty_assertions = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "test-util"] }
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

@@ -24,7 +24,7 @@ use crate::config::{self, Profile, validate_poll_interval};
 use crate::poller::{self, CadenceMode, PollerEvent};
 use crate::tui::app::{App, AppAction};
 
-pub async fn run(profile_name: &str) -> anyhow::Result<()> {
+pub async fn run(profile_name: &str, update_notice: Option<String>) -> anyhow::Result<()> {
     let profile =
         Profile::by_name(profile_name).ok_or_else(|| anyhow!("unknown profile: {profile_name}"))?;
     let cfg = config::load_or_default();
@@ -72,6 +72,7 @@ pub async fn run(profile_name: &str) -> anyhow::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new(validated.warning);
+    app.set_update_notice(update_notice);
 
     let res = event_loop(
         &mut terminal,
