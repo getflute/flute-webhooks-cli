@@ -142,12 +142,10 @@ impl ApiClient {
         &self,
         req: &CreateWebhookEndpointRequest,
     ) -> Result<CreateWebhookEndpointResponse, ApiError> {
-        self.send(
-            Method::POST,
-            "/v2/webhooks/endpoints",
-            Some(serde_json::to_value(req).unwrap()),
-        )
-        .await
+        let body = serde_json::to_value(req)
+            .map_err(|e| ApiError::Decode(format!("encode create_endpoint body: {e}")))?;
+        self.send(Method::POST, "/v2/webhooks/endpoints", Some(body))
+            .await
     }
 
     pub async fn update_endpoint(
@@ -155,10 +153,12 @@ impl ApiClient {
         id: &str,
         req: &UpdateWebhookEndpointRequest,
     ) -> Result<GetWebhookEndpointDto, ApiError> {
+        let body = serde_json::to_value(req)
+            .map_err(|e| ApiError::Decode(format!("encode update_endpoint body: {e}")))?;
         self.send(
             Method::PUT,
             &format!("/v2/webhooks/endpoints/{id}"),
-            Some(serde_json::to_value(req).unwrap()),
+            Some(body),
         )
         .await
     }
