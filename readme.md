@@ -3,7 +3,7 @@
 A Rust CLI **and** terminal UI for working with Flute webhooks: manage endpoints, watch delivery logs in real time, retry failures, and forward incoming successful events to a local listener URL. Built with [ratatui](https://ratatui.rs), [reqwest](https://docs.rs/reqwest), [clap](https://docs.rs/clap), and tokio.
 
 ![status](https://img.shields.io/badge/status-v0.2.0-blue)
-[![build](https://github.com/getflute/flute-webhooks/actions/workflows/build.yaml/badge.svg)](https://github.com/getflute/flute-webhooks/actions/workflows/build.yaml)
+[![release](https://github.com/getflute/flute-webhooks/actions/workflows/release.yml/badge.svg)](https://github.com/getflute/flute-webhooks/actions/workflows/release.yml)
 
 ## What it does
 
@@ -37,12 +37,6 @@ Every documented Webhook API call is reachable from both modes:
 | Self-update                 | modal on startup; dismissable        | `flute-webhook update`                         |
 
 `--output json` works on every CLI subcommand, producing pretty-printed JSON for piping into `jq`.
-
-## Requirements
-
-- **Rust 1.85+** (edition 2024). Install via [rustup](https://rustup.rs/).
-- **macOS, Linux, or Windows** — uses the OS keychain (Keychain on macOS, Secret Service on Linux, Credential Manager on Windows).
-- A **Flute API client_id and client_secret** for the environment you want to use (UAT or production).
 
 ## Install
 
@@ -154,6 +148,7 @@ Global flags (work on every subcommand): `--profile <uat|production>`, `--debug`
 | **Delete confirm** | `y`/`Enter` delete · `n`/`Esc` cancel |
 | **Details modal** | `↑↓`/`jk` scroll · `PgUp`/`PgDn` page · `Esc`/`Enter`/`q` close |
 | **Error modal** | `Enter`/`Esc` dismiss (every other key is absorbed) |
+| **Update-available modal** | `Enter`/`Esc` dismiss (every other key is absorbed) |
 
 While typing in a text field (URL or Name), single-character keys like `q`, `c`, `d`, `e`, `p`, `r`, `l`, `t` are treated as literal characters — they will **not** trigger the corresponding TUI commands.
 
@@ -217,7 +212,7 @@ Use `--profile` (global flag, accepted before or after the subcommand). Active p
 ## Development
 
 ```bash
-cargo test       # 78 tests across lib + integration suites
+cargo test       # 88 tests across lib + integration suites
 cargo clippy --all-targets --no-deps
 cargo fmt
 ```
@@ -226,15 +221,17 @@ Project layout:
 
 ```
 src/
-├── api/        REST client, DTOs (camelCase + PascalCase), error types
-├── auth/       Keychain wrapper, OAuth2 token cache (proactive + reactive refresh)
-├── config.rs   Config + Profile + polling validator
-├── domain.rs   TUI-facing domain types (Endpoint, DeliveryLog, EventTypeMeta)
-├── forward.rs  Listener forwarding (used by both TUI and `listen` CLI)
-├── poller.rs   Background tokio task with adaptive cadence + exponential backoff
-├── cli/        clap subcommands, output formatters, webhooks dispatcher
-├── lib.rs      Entry point: tracing, runtime, dispatch
-└── tui/        Ratatui App state, key handling, render, modals
+├── api/             REST client, DTOs (camelCase + PascalCase), error types
+├── auth/            Keychain wrapper, OAuth2 token cache (proactive + reactive refresh)
+├── config.rs        Config + Profile + polling validator + auto_update_check
+├── domain.rs        TUI-facing domain types (Endpoint, DeliveryLog, EventTypeMeta)
+├── forward.rs       Listener forwarding (used by both TUI and `listen` CLI)
+├── poller.rs        Background tokio task with adaptive cadence + exponential backoff
+├── cli/             clap subcommands, output formatters, webhooks dispatcher
+├── update.rs        axoupdater wrapper — `update` subcommand
+├── update_check.rs  Startup version check + 24h cache + opt-out predicates
+├── lib.rs           Entry point: tracing, runtime, dispatch
+└── tui/             Ratatui App state, key handling, render, modals
 ```
 
 Implementation plans: see `docs/superpowers/plans/`.
