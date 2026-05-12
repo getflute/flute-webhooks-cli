@@ -67,6 +67,23 @@ pub fn run() -> anyhow::Result<()> {
             eprintln!("\n{}", update_check::notice_for(&version));
         }
 
+        // Structured error envelope for agents: when --output json is set and
+        // the command failed, print a JSON object describing the error to
+        // stdout (so it lands in the same stream the agent is already parsing
+        // for success) and exit non-zero ourselves. This bypasses anyhow's
+        // default Debug-formatted stderr dump, which is text and would
+        // confuse a json-only consumer.
+        if let Err(e) = &dispatch_result
+            && output_fmt == cli::OutputFormat::Json
+            && !is_tui
+        {
+            let envelope = cli::output::ErrorJson::from_anyhow(e);
+            if let Ok(json) = serde_json::to_string_pretty(&envelope) {
+                println!("{json}");
+            }
+            std::process::exit(1);
+        }
+
         dispatch_result
     })
 }

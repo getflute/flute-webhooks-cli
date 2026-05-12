@@ -15,6 +15,7 @@ A Rust CLI **and** terminal UI for working with Flute webhooks: manage endpoints
 - **Resilient auth** — bearer tokens cached + proactively refreshed 60 s before expiry; reactive retry once on a 401.
 - **Errors with correlation IDs** — failed API calls show a sticky red modal with the server's `Title`, `Details`, `ExceptionType`, and correlation ID until you dismiss it.
 - **`--debug` for HTTP traces** — every request + response (status, URL, body) at debug level, to stdout (CLI) or `~/.flute/flute-webhook.log` (TUI).
+- **Agent-friendly** — every non-TUI subcommand supports `--output json`, including a structured error envelope (`{kind, message, status?, correlation_id?}`) printed to stdout on failure. See [AGENTS.md](AGENTS.md) for the full machine-readable contract.
 
 ## Coverage: TUI ↔ CLI
 
