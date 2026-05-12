@@ -63,6 +63,12 @@ pub enum Command {
     /// Webhook API subcommands: endpoints, deliveries, event-types.
     #[command(subcommand)]
     Webhooks(WebhooksCommand),
+
+    /// Check GitHub Releases for a newer version of flute-webhook and, if
+    /// found and this binary was installed via a cargo-dist installer
+    /// (shell, Homebrew, or PowerShell), self-update in place. Users who
+    /// built from source get an informational message instead.
+    Update,
 }
 
 #[derive(Subcommand, Debug)]

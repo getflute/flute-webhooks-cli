@@ -6,6 +6,7 @@ pub mod domain;
 pub mod forward;
 pub mod poller;
 pub mod tui;
+pub mod update;
 
 use clap::{CommandFactory, Parser};
 use std::sync::Mutex;
@@ -39,6 +40,7 @@ pub fn run() -> anyhow::Result<()> {
             cli::Command::Auth(cli::AuthCommand::Token) => auth_print_token(&profile).await,
             cli::Command::Listen { forward_to } => listen(&profile, &forward_to).await,
             cli::Command::Webhooks(c) => run_webhooks(&profile, output_fmt, c).await,
+            cli::Command::Update => update::run().await,
         }
     })
 }
