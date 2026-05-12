@@ -70,6 +70,49 @@ fn endpoints_table_shows_subscribed_event_count_not_strings() {
     );
 }
 
+#[test]
+fn update_notice_renders_dismissable_modal_overlay() {
+    let mut app = App::new(None);
+    app.set_update_notice(Some("9.9.9".into()));
+
+    let backend = TestBackend::new(120, 20);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|f| render(f, &app)).unwrap();
+    let text = buf_to_string(&terminal.backend().buffer().clone());
+
+    assert!(
+        text.contains("Update Available"),
+        "modal should announce itself: {text}"
+    );
+    assert!(text.contains("9.9.9"), "modal should embed the version");
+    assert!(
+        text.contains("flute-webhook update"),
+        "modal should tell the user how to install"
+    );
+    assert!(
+        text.contains("Dismiss"),
+        "modal should advertise the dismiss action"
+    );
+}
+
+#[test]
+fn update_notice_can_be_dismissed_with_enter() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+    let mut app = App::new(None);
+    app.set_update_notice(Some("9.9.9".into()));
+    assert!(app.update_notice.is_some());
+
+    let _ = app.handle_key(KeyEvent::new_with_kind(
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+        KeyEventKind::Press,
+    ));
+    assert!(
+        app.update_notice.is_none(),
+        "Enter should dismiss the update-available modal"
+    );
+}
+
 fn buf_to_string(buf: &ratatui::buffer::Buffer) -> String {
     let mut out = String::new();
     for y in 0..buf.area.height {

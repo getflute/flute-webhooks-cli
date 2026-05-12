@@ -85,20 +85,28 @@ fn cache_path() -> std::path::PathBuf {
 }
 
 fn read_fresh_cache() -> Option<Cache> {
-    let raw = std::fs::read_to_string(cache_path()).ok()?;
-    let cache: Cache = serde_json::from_str(&raw).ok()?;
-    let age = now_unix().saturating_sub(cache.checked_at_unix_secs);
-    if age < CACHE_TTL_SECS {
-        Some(cache)
-    } else {
-        None
-    }
+    read_fresh_cache_at(&cache_path(), now_unix())
 }
 
 fn write_cache(c: &Cache) -> std::io::Result<()> {
-    let dir = config_dir();
-    std::fs::create_dir_all(&dir)?;
-    std::fs::write(dir.join(CACHE_FILE), serde_json::to_string(c)?)
+    write_cache_at(&cache_path(), c)
+}
+
+/// Path-injectable cache reader so tests don't have to touch `~/.flute`.
+/// Returns `None` if the file is missing, corrupt, or older than the TTL.
+fn read_fresh_cache_at(path: &std::path::Path, now_secs: u64) -> Option<Cache> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    let cache: Cache = serde_json::from_str(&raw).ok()?;
+    let age = now_secs.saturating_sub(cache.checked_at_unix_secs);
+    (age < CACHE_TTL_SECS).then_some(cache)
+}
+
+/// Path-injectable cache writer. Creates the parent directory if needed.
+fn write_cache_at(path: &std::path::Path, c: &Cache) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, serde_json::to_string(c)?)
 }
 
 /// Compose the one-line notice we print in CLI mode. Kept here so the TUI
@@ -142,5 +150,67 @@ mod tests {
             n.contains("flute-webhook update"),
             "notice should tell the user how to update: {n}"
         );
+    }
+
+    #[test]
+    fn cache_round_trip_returns_value_when_fresh() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("update-check.json");
+        let now = 1_700_000_000;
+        let written = Cache {
+            checked_at_unix_secs: now,
+            latest_version: Some("9.9.9".into()),
+        };
+        write_cache_at(&path, &written).unwrap();
+        let read = read_fresh_cache_at(&path, now + 60).expect("cache should still be fresh");
+        assert_eq!(read.latest_version.as_deref(), Some("9.9.9"));
+    }
+
+    #[test]
+    fn cache_older_than_ttl_is_treated_as_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("update-check.json");
+        let then = 1_700_000_000;
+        write_cache_at(
+            &path,
+            &Cache {
+                checked_at_unix_secs: then,
+                latest_version: Some("9.9.9".into()),
+            },
+        )
+        .unwrap();
+        let now = then + CACHE_TTL_SECS + 1;
+        assert!(
+            read_fresh_cache_at(&path, now).is_none(),
+            "cache older than TTL must force a re-check"
+        );
+    }
+
+    #[test]
+    fn cache_with_no_update_still_persists_to_suppress_followups() {
+        // A "you're on latest" check writes a Cache with latest_version=None.
+        // The read path must round-trip that so we don't hit the network
+        // again for 24h after confirming no update is available.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("update-check.json");
+        let now = 1_700_000_000;
+        write_cache_at(
+            &path,
+            &Cache {
+                checked_at_unix_secs: now,
+                latest_version: None,
+            },
+        )
+        .unwrap();
+        let read = read_fresh_cache_at(&path, now + 60).expect("fresh");
+        assert!(read.latest_version.is_none());
+    }
+
+    #[test]
+    fn corrupt_cache_is_ignored_rather_than_panicking() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("update-check.json");
+        std::fs::write(&path, "not-json").unwrap();
+        assert!(read_fresh_cache_at(&path, 1_700_000_000).is_none());
     }
 }

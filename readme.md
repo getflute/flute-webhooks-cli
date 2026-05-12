@@ -34,6 +34,7 @@ Every documented Webhook API call is reachable from both modes:
 | Retry failed delivery       | `r` on a failed row                  | `webhooks deliveries retry <id>`               |
 | Listen + forward locally    | `l` → listener modal                 | `flute-webhook listen --forward-to <url>`      |
 | Manual one-shot forward     | `t` on a successful row              | (`listen` covers it; manual one-shot deferred) |
+| Self-update                 | modal on startup; dismissable        | `flute-webhook update`                         |
 
 `--output json` works on every CLI subcommand, producing pretty-printed JSON for piping into `jq`.
 
@@ -43,16 +44,33 @@ Every documented Webhook API call is reachable from both modes:
 - **macOS, Linux, or Windows** — uses the OS keychain (Keychain on macOS, Secret Service on Linux, Credential Manager on Windows).
 - A **Flute API client_id and client_secret** for the environment you want to use (UAT or production).
 
-## Build
+## Install
+
+Pick whichever installer matches your platform — each one drops a `flute-webhook` binary on your `PATH` plus an install receipt that the in-app `update` command reads when checking for new versions.
 
 ```bash
-git clone <this-repo>
+# macOS / Linux (curl + sh)
+curl -LsSf https://github.com/getflute/flute-webhooks/releases/latest/download/flute-webhooks-installer.sh | sh
+
+# macOS / Linux (Homebrew)
+brew install getflute/flute-webhooks/flute-webhooks
+
+# Windows (PowerShell)
+irm https://github.com/getflute/flute-webhooks/releases/latest/download/flute-webhooks-installer.ps1 | iex
+```
+
+Installers, archives, and SHA-256 sums are produced by [`cargo-dist`](https://opensource.axo.dev/cargo-dist/) on every `v*` tag and attached to the [GitHub Release page](https://github.com/getflute/flute-webhooks/releases). Build targets: macOS Apple Silicon, Linux x86_64, Windows x86_64.
+
+## Build from source
+
+```bash
+git clone https://github.com/getflute/flute-webhooks.git
 cd flute-webhooks
 cargo build --release
 # Binary lands at target/release/flute-webhook
 ```
 
-For development, `cargo build` (debug profile) is faster and works the same way.
+For development, `cargo build` (debug profile) is faster and works the same way. Source-built binaries do not carry an install receipt, so `flute-webhook update` cannot self-replace them — it will check for a newer version and tell you to reinstall via one of the installers above.
 
 ## First run
 
@@ -115,6 +133,11 @@ flute-webhook webhooks deliveries retry <id>
 # Headless listener — POSTs every NEW successful delivery's headers + body
 # to a local URL. Runs in the foreground until Ctrl-C.
 flute-webhook listen --forward-to http://127.0.0.1:3000/webhook
+
+# Check GitHub Releases and self-update in place (only works when installed
+# via one of the cargo-dist installers above; from-source builds get an
+# informational message pointing at the installers).
+flute-webhook update
 ```
 
 Global flags (work on every subcommand): `--profile <uat|production>`, `--debug`, `--output table|json`.
@@ -141,6 +164,7 @@ Optional `~/.flute/config.toml`:
 ```toml
 default_profile = "uat"          # uat | production
 poll_interval_seconds = 5        # 5–60; out of range falls back to 5 with a warning
+auto_update_check = true         # check GitHub Releases at most once / 24h
 ```
 
 If `poll_interval_seconds` is outside `5..=60`, the TUI shows a yellow warning in the dashboard title and uses the default of 5 seconds.
@@ -153,6 +177,20 @@ If `poll_interval_seconds` is outside `5..=60`, the TUI shows a yellow warning i
 | `FLUTE_CLIENT_ID` | Skips keychain lookup — used for CI |
 | `FLUTE_CLIENT_SECRET` | Same — both must be set together |
 | `RUST_LOG` | Tracing filter, e.g. `RUST_LOG=flute_webhook=debug` (overrides `--debug` defaults if set) |
+| `FLUTE_NO_UPDATE_CHECK` | Set to anything to suppress the startup update check |
+| `FLUTE_GITHUB_TOKEN` | Optional GitHub token (raises the 60/hr unauth limit; required if the release repo is private) |
+| `CI` | When set (Actions, Buildkite, etc.), the startup update check is automatically skipped |
+
+### Updating
+
+On every run, `flute-webhook` checks GitHub Releases at most once per 24 hours (cached at `~/.flute/update-check.json`) and surfaces a non-blocking notice if a newer version is available:
+
+- **CLI**: a one-line `eprintln!` after the command finishes, so stdout (including `--output json`) stays clean.
+- **TUI**: a dismissable green modal on the first frame; Enter or Esc dismisses it.
+
+The check is skipped entirely when any of the following apply: the subcommand is `update` or `auth`, `auto_update_check = false`, `FLUTE_NO_UPDATE_CHECK` is set, `CI` is set, or stderr isn't a TTY (piped output).
+
+When a newer version exists, run `flute-webhook update` to install it. Binaries installed via one of the cargo-dist installers (curl, brew, irm) carry an install receipt and can self-replace in place. Source-built binaries (`cargo install`, `cargo build --release`) instead receive a printed instruction to reinstall via an installer.
 
 ### Debugging HTTP traffic
 
@@ -203,24 +241,30 @@ Implementation plans: see `docs/superpowers/plans/`.
 
 ## Releases
 
-Tag pushes matching `v*` trigger `.github/workflows/build.yaml`, which builds release binaries for three targets and attaches them to a GitHub Release:
+Tag pushes matching `v*` trigger `.github/workflows/release.yml`, generated by [`cargo-dist`](https://opensource.axo.dev/cargo-dist/). For each tag the workflow builds release binaries for three targets, generates the matching installers, and uploads everything to a GitHub Release with a generated changelog:
 
-| Target                  | Runner          | Triple                       |
-|-------------------------|-----------------|------------------------------|
-| macOS Apple Silicon     | `macos-latest`  | `aarch64-apple-darwin`       |
-| Linux x86_64            | `ubuntu-latest` | `x86_64-unknown-linux-gnu`   |
-| Windows x86_64          | `windows-latest`| `x86_64-pc-windows-msvc`     |
+| Target                  | Runner          | Triple                       | Archive             |
+|-------------------------|-----------------|------------------------------|---------------------|
+| macOS Apple Silicon     | `macos-latest`  | `aarch64-apple-darwin`       | `.tar.xz`           |
+| Linux x86_64            | `ubuntu-latest` | `x86_64-unknown-linux-gnu`   | `.tar.xz`           |
+| Windows x86_64          | `windows-latest`| `x86_64-pc-windows-msvc`     | `.zip`              |
 
-Each job uses [`taiki-e/upload-rust-binary-action`](https://github.com/taiki-e/upload-rust-binary-action) to build a release binary, archive it as `flute-webhook-<tag>-<target>` (`.tar.gz` on macOS/Linux, `.zip` on Windows), and upload it to the GitHub Release page for the tag. On Linux the runner additionally installs `libdbus-1-dev`/`pkg-config` so the keyring crate's secret-service backend can link.
+Plus three installer artifacts per release:
+
+- `flute-webhooks-installer.sh` (`curl … | sh`)
+- `flute-webhooks-installer.ps1` (`irm … | iex`)
+- `flute-webhooks.rb` (Homebrew formula in the same repo)
+
+`dist plan` (run locally) prints the exact artifact list a tag would produce — useful before pushing a release tag.
 
 To cut a release:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
-The workflow only fires on tags matching `v*` (and on manual `workflow_dispatch` from the Actions tab). It does not run on regular pushes or pull requests.
+The workflow only fires on tags matching `v*` (plus manual `workflow_dispatch` from the Actions tab). It does not run on regular pushes or pull requests. A snapshot of the previous (taiki-e-based) workflow lives at `docs/legacy/build.yaml` if you ever need to roll back.
 
 ## Troubleshooting
 
