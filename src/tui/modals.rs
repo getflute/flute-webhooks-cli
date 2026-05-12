@@ -386,6 +386,41 @@ pub fn render_error_modal(frame: &mut Frame, msg: &str) {
     );
 }
 
+pub fn render_update_modal(frame: &mut Frame, version: &str) {
+    let area = centered_rect(70, 40, frame.area());
+    frame.render_widget(Clear, area);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" ⬆ Update Available ")
+        .title_style(Style::default().fg(Color::Green).bold())
+        .border_style(Style::default().fg(Color::Green))
+        .style(Style::default().bg(Color::Black));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let lines = vec![
+        Line::from(Span::styled(
+            format!("A newer version ({version}) of flute-webhook is available."),
+            Style::default().fg(Color::White),
+        )),
+        Line::raw(""),
+        Line::from(Span::styled(
+            "Run `flute-webhook update` from the command line to install it.",
+            Style::default().fg(Color::White),
+        )),
+        Line::raw(""),
+        Line::from(Span::styled(
+            " [Enter/Esc] Dismiss ",
+            Style::default().fg(Color::Cyan).bold(),
+        )),
+    ];
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .style(Style::default().bg(Color::Black)),
+        inner,
+    );
+}
+
 pub fn render_details_modal(frame: &mut Frame, app: &App, log_id: &str) {
     let area = centered_rect(75, 90, frame.area());
     frame.render_widget(Clear, area);

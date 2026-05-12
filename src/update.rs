@@ -21,12 +21,24 @@
 use anyhow::{Context, Result};
 use axoupdater::{AxoUpdater, ReleaseSource, ReleaseSourceType};
 
-const APP_NAME: &str = "flute-webhooks";
-const REPO_OWNER: &str = "getflute";
-const REPO_NAME: &str = "flute-webhooks";
+pub const APP_NAME: &str = "flute-webhooks";
+pub const REPO_OWNER: &str = "getflute";
+pub const REPO_NAME: &str = "flute-webhooks";
 
-/// Build an `AxoUpdater` configured for this binary. Returns `(updater,
-/// has_receipt)` so callers can decide whether `run()` is even meaningful.
+/// Returns Some(latest_version_string) if a newer version exists on GitHub
+/// Releases, None otherwise. Never panics; all errors map to None so callers
+/// (especially the silent startup check) don't break the foreground command.
+pub async fn query_latest_silently() -> Option<String> {
+    let (mut updater, _) = make_updater();
+    let v = updater.query_new_version().await.ok().flatten()?;
+    let v = v.to_string();
+    if v == env!("CARGO_PKG_VERSION") {
+        None
+    } else {
+        Some(v)
+    }
+}
+
 fn make_updater() -> (AxoUpdater, bool) {
     let mut updater = AxoUpdater::new_for(APP_NAME);
     let has_receipt = updater.load_receipt().is_ok();

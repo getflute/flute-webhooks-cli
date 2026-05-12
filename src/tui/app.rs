@@ -230,6 +230,11 @@ pub struct App {
     /// snapshot at the moment the listener is enabled so we don't blast the
     /// listener with the entire backlog.
     pub seen_log_ids: HashSet<String>,
+
+    /// Populated by the startup update check when a newer GitHub Release is
+    /// available. Renders a dismissable modal on first frame. Cleared by any
+    /// key press (the modal absorbs all keys while open).
+    pub update_notice: Option<String>,
 }
 
 impl App {
@@ -258,7 +263,16 @@ impl App {
             listener_enabled: false,
             listener_form: ListenerForm::from_app(None, false),
             seen_log_ids: HashSet::new(),
+            update_notice: None,
         }
+    }
+
+    pub fn set_update_notice(&mut self, version: Option<String>) {
+        self.update_notice = version;
+    }
+
+    pub fn clear_update_notice(&mut self) {
+        self.update_notice = None;
     }
 
     pub fn show_toast(&mut self, msg: impl Into<String>) {
@@ -436,6 +450,15 @@ impl App {
         // Ctrl-C always quits
         if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
             self.running = false;
+            return AppAction::None;
+        }
+        // The update-available modal renders on top of everything else and
+        // absorbs every key. Enter/Esc dismiss it; other keys are swallowed
+        // so the user can't accidentally trigger an action they couldn't see.
+        if self.update_notice.is_some() {
+            if matches!(key.code, KeyCode::Esc | KeyCode::Enter) {
+                self.clear_update_notice();
+            }
             return AppAction::None;
         }
         match self.modal.clone() {

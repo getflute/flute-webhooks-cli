@@ -5,6 +5,7 @@ use std::path::PathBuf;
 pub struct Config {
     pub default_profile: String,
     pub poll_interval_seconds: u64,
+    pub auto_update_check: bool,
 }
 
 impl Default for Config {
@@ -12,6 +13,7 @@ impl Default for Config {
         Self {
             default_profile: "uat".into(),
             poll_interval_seconds: 5,
+            auto_update_check: true,
         }
     }
 }
@@ -139,6 +141,7 @@ mod tests {
         let c = Config::default();
         assert_eq!(c.default_profile, "uat");
         assert_eq!(c.poll_interval_seconds, 5);
+        assert!(c.auto_update_check);
     }
 }
 
