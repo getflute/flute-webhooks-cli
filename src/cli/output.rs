@@ -5,6 +5,7 @@
 //!   - `OutputFormat::Table` — hand-rolled aligned columns. Kept dep-free so
 //!     we don't pull in `comfy-table` for a few CLI helpers.
 
+use crate::api::error::ApiError;
 use crate::api::models::{
     DeliveryLogDetailDto, GetWebhookEndpointDto, PingResponseDto, WebhookDeliveryLogStatus,
     WebhookEndpointStatus,
@@ -13,6 +14,73 @@ use crate::cli::OutputFormat;
 use crate::domain::{DeliveryLog, EventTypeMeta};
 use serde::Serialize;
 use std::io::Write;
+
+/// Structured failure shape printed to stdout when a non-TUI command
+/// exits with an error under `--output json`. Agents branch on `kind` and
+/// `status` rather than scraping anyhow's text format off stderr.
+///
+/// `kind` is one of:
+///   - `"api"`     — HTTP error from the Flute API (status + correlation_id present)
+///   - `"transport"` — connection / TLS / DNS failure (status absent)
+///   - `"auth"`    — OAuth or keychain failure (status absent)
+///   - `"decode"`  — request encode or response decode failure (status absent)
+///   - `"client"`  — anything else (config, CLI parsing, unknown)
+#[derive(Debug, Serialize)]
+pub struct ErrorJson {
+    pub kind: &'static str,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_id: Option<String>,
+}
+
+impl ErrorJson {
+    /// Build a structured envelope by inspecting the error chain for an
+    /// `ApiError` (the typed variant we can extract richer fields from).
+    /// Anything else falls back to `kind="client"` with the formatted
+    /// message — the agent still gets *a* JSON object, never bare text.
+    pub fn from_anyhow(err: &anyhow::Error) -> Self {
+        if let Some(api) = err.downcast_ref::<ApiError>() {
+            return match api {
+                ApiError::Api {
+                    status,
+                    correlation_id,
+                    message,
+                } => Self {
+                    kind: "api",
+                    message: message.clone(),
+                    status: Some(*status),
+                    correlation_id: correlation_id.clone(),
+                },
+                ApiError::Transport(e) => Self {
+                    kind: "transport",
+                    message: e.to_string(),
+                    status: None,
+                    correlation_id: None,
+                },
+                ApiError::Auth(m) => Self {
+                    kind: "auth",
+                    message: m.clone(),
+                    status: None,
+                    correlation_id: None,
+                },
+                ApiError::Decode(m) => Self {
+                    kind: "decode",
+                    message: m.clone(),
+                    status: None,
+                    correlation_id: None,
+                },
+            };
+        }
+        Self {
+            kind: "client",
+            message: err.to_string(),
+            status: None,
+            correlation_id: None,
+        }
+    }
+}
 
 /// Print a JSON-serializable value if the format is Json. Returns true if
 /// printed, so the caller can fall through to the Table branch.
@@ -243,5 +311,65 @@ mod tests {
         assert_eq!(out.chars().count(), 6);
         assert!(out.ends_with('…'));
         assert!(out.starts_with("hello"));
+    }
+
+    #[test]
+    fn error_json_api_variant_surfaces_status_and_correlation_id() {
+        let e: anyhow::Error = ApiError::Api {
+            status: 422,
+            correlation_id: Some("abc-123".into()),
+            message: "Validation failed".into(),
+        }
+        .into();
+        let env = ErrorJson::from_anyhow(&e);
+        assert_eq!(env.kind, "api");
+        assert_eq!(env.status, Some(422));
+        assert_eq!(env.correlation_id.as_deref(), Some("abc-123"));
+        assert_eq!(env.message, "Validation failed");
+        let json = serde_json::to_value(&env).unwrap();
+        assert_eq!(json["kind"], "api");
+        assert_eq!(json["status"], 422);
+        assert_eq!(json["correlation_id"], "abc-123");
+    }
+
+    #[test]
+    fn error_json_auth_variant_uses_auth_kind_no_status() {
+        let e: anyhow::Error = ApiError::Auth("no token".into()).into();
+        let env = ErrorJson::from_anyhow(&e);
+        assert_eq!(env.kind, "auth");
+        assert!(env.status.is_none());
+        assert!(env.correlation_id.is_none());
+        assert_eq!(env.message, "no token");
+        // status / correlation_id must be omitted from JSON (not null) so
+        // agents that branch on key-presence stay consistent across kinds.
+        let json = serde_json::to_string(&env).unwrap();
+        assert!(!json.contains("status"));
+        assert!(!json.contains("correlation_id"));
+    }
+
+    #[test]
+    fn error_json_falls_back_to_client_for_unknown_errors() {
+        let e = anyhow::anyhow!("unknown profile: garbage");
+        let env = ErrorJson::from_anyhow(&e);
+        assert_eq!(env.kind, "client");
+        assert!(env.message.contains("garbage"));
+    }
+
+    #[test]
+    fn error_json_finds_api_error_through_context_wrapper() {
+        // `?` callers often add context via `anyhow::Context`; the downcast
+        // must still locate the typed ApiError in the chain, otherwise the
+        // envelope would lose status + correlation_id.
+        let inner: anyhow::Error = ApiError::Api {
+            status: 500,
+            correlation_id: Some("xyz".into()),
+            message: "boom".into(),
+        }
+        .into();
+        let wrapped = inner.context("while creating endpoint");
+        let env = ErrorJson::from_anyhow(&wrapped);
+        assert_eq!(env.kind, "api");
+        assert_eq!(env.status, Some(500));
+        assert_eq!(env.correlation_id.as_deref(), Some("xyz"));
     }
 }
