@@ -434,8 +434,7 @@ pub fn render_details_modal(frame: &mut Frame, app: &App, log_id: &str) {
     frame.render_widget(block, area);
 
     let mut lines: Vec<Line> = Vec::new();
-    let detail = app.delivery_detail.as_ref().filter(|d| d.id == log_id);
-    if detail.is_none() {
+    let Some(d) = app.delivery_detail.as_ref().filter(|d| d.id == log_id) else {
         lines.push(Line::from(Span::styled(
             "Loading details…",
             Style::default().fg(Color::Yellow),
@@ -446,8 +445,7 @@ pub fn render_details_modal(frame: &mut Frame, app: &App, log_id: &str) {
             .style(Style::default().bg(Color::Black));
         frame.render_widget(p, inner);
         return;
-    }
-    let d = detail.unwrap();
+    };
 
     lines.push(Line::from(vec![
         Span::styled(
