@@ -17,3 +17,11 @@ install-path = "CARGO_HOME"
 hosting = "github"
 # Whether to install an updater program
 install-updater = false
+
+# System packages required at build time on each target's runner. The
+# keyring crate's `linux-native-sync-persistent` backend links against
+# libdbus-1, so the Ubuntu runner needs libdbus-1-dev + pkg-config or the
+# build fails inside libdbus-sys's build.rs.
+[dist.dependencies.apt]
+libdbus-1-dev = "*"
+pkg-config = "*"
