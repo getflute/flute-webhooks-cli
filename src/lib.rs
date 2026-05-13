@@ -29,6 +29,13 @@ pub fn run() -> anyhow::Result<()> {
     };
     let is_tui = matches!(cmd, cli::Command::Tui);
 
+    // Truncate any prior TUI trace log so each invocation starts with a
+    // clean file. Done unconditionally (not just in TUI mode) so a quick
+    // CLI command also gets credit for "fresh log on next TUI launch".
+    // Best-effort: ignore the error if the file doesn't exist or the
+    // delete races with another process.
+    let _ = std::fs::remove_file(config::config_dir().join("flute-webhook.log"));
+
     init_tracing(is_tui, debug);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
