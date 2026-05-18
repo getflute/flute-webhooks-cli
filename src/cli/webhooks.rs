@@ -1,4 +1,4 @@
-//! Dispatch for the `flute-webhook webhooks …` subcommands. Each handler
+//! Dispatch for the `flute-webhooks-cli webhooks …` subcommands. Each handler
 //! constructs a request from the parsed clap args, hits the live API via
 //! `ApiClient`, and prints the response through the format-aware helpers in
 //! `crate::cli::output`.

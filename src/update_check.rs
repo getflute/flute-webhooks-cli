@@ -1,5 +1,5 @@
 //! Lightweight startup check that pings GitHub Releases at most once per
-//! 24 h and reports whether a newer version of flute-webhook is available.
+//! 24 h and reports whether a newer version of flute-webhooks-cli is available.
 //!
 //! Three opt-out paths so this never gets in the way:
 //!   1. `auto_update_check = false` in `~/.flute/config.toml`
@@ -113,7 +113,7 @@ fn write_cache_at(path: &std::path::Path, c: &Cache) -> std::io::Result<()> {
 /// modal and the CLI banner stay in sync.
 pub fn notice_for(version: &str) -> String {
     format!(
-        "A newer version ({version}) of flute-webhook is available — run `flute-webhook update` to install."
+        "A newer version ({version}) of flute-webhooks-cli is available — run `flute-webhooks-cli update` to install."
     )
 }
 
@@ -147,7 +147,7 @@ mod tests {
         let n = notice_for("9.9.9");
         assert!(n.contains("9.9.9"), "notice should embed the version: {n}");
         assert!(
-            n.contains("flute-webhook update"),
+            n.contains("flute-webhooks-cli update"),
             "notice should tell the user how to update: {n}"
         );
     }

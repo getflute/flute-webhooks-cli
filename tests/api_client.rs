@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
-use flute_webhook::api::{ApiClient, models::*};
-use flute_webhook::auth::token::{Fetcher, TokenStore};
+use flute_webhooks_cli::api::{ApiClient, models::*};
+use flute_webhooks_cli::auth::token::{Fetcher, TokenStore};
 use std::sync::Arc;
 use std::time::Duration;
 use wiremock::{

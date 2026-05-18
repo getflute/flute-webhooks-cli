@@ -1,8 +1,8 @@
 use chrono::Utc;
-use flute_webhook::api::models::WebhookEndpointStatus;
-use flute_webhook::domain::{Endpoint, EventTypeMeta};
-use flute_webhook::tui::app::App;
-use flute_webhook::tui::ui::render;
+use flute_webhooks_cli::api::models::WebhookEndpointStatus;
+use flute_webhooks_cli::domain::{Endpoint, EventTypeMeta};
+use flute_webhooks_cli::tui::app::App;
+use flute_webhooks_cli::tui::ui::render;
 use ratatui::{Terminal, backend::TestBackend};
 
 fn endpoint(name: &str, subscribed_event_types: Vec<&str>) -> Endpoint {
@@ -86,7 +86,7 @@ fn update_notice_renders_dismissable_modal_overlay() {
     );
     assert!(text.contains("9.9.9"), "modal should embed the version");
     assert!(
-        text.contains("flute-webhook update"),
+        text.contains("flute-webhooks-cli update"),
         "modal should tell the user how to install"
     );
     assert!(

@@ -31,7 +31,7 @@ pub async fn run(profile_name: &str, update_notice: Option<String>) -> anyhow::R
     let validated = validate_poll_interval(cfg.poll_interval_seconds);
 
     let (id, secret) = keychain::load_with_env_fallback(profile_name)?.ok_or_else(|| {
-        anyhow!("no credentials for [{profile_name}]; run `flute-webhook auth login`")
+        anyhow!("no credentials for [{profile_name}]; run `flute-webhooks-cli auth login`")
     })?;
 
     let http = reqwest::Client::builder()
@@ -191,7 +191,7 @@ async fn execute_action(
         },
         AppAction::ForwardLog { log_id, url } => {
             // Forward errors are best-effort — they emit warn-level tracing
-            // (visible with --debug or RUST_LOG=flute_webhook=warn) but do not
+            // (visible with --debug or RUST_LOG=flute_webhooks_cli=warn) but do not
             // surface to the user as modal errors. Listeners go up and down
             // and we don't want a flaky dev server to spam red banners.
             if let Err(e) = crate::forward::forward_log(&api.http, api, &log_id, &url).await {
