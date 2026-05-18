@@ -6,7 +6,7 @@
 //!
 //! For users who installed via the cargo-dist shell/PowerShell/Homebrew
 //! installers, the installer drops an "install receipt" at
-//! `~/.config/flute-webhooks/flute-webhooks-receipt.json`. axoupdater reads
+//! `~/.config/flute-webhooks-cli/flute-webhooks-cli-receipt.json`. axoupdater reads
 //! that file to know which release source + installer to use. For users who
 //! built from source (`cargo install`, `cargo build --release`) there is no
 //! receipt — we fall back to an explicit GitHub Releases source so the
@@ -21,9 +21,9 @@
 use anyhow::{Context, Result};
 use axoupdater::{AxoUpdater, ReleaseSource, ReleaseSourceType};
 
-pub const APP_NAME: &str = "flute-webhooks";
+pub const APP_NAME: &str = "flute-webhooks-cli";
 pub const REPO_OWNER: &str = "getflute";
-pub const REPO_NAME: &str = "flute-webhooks";
+pub const REPO_NAME: &str = "flute-webhooks-cli";
 
 /// Returns Some(latest_version_string) if a newer version exists on GitHub
 /// Releases, None otherwise. Never panics; all errors map to None so callers
@@ -76,9 +76,9 @@ pub async fn run() -> Result<()> {
                     "A newer version ({v}) is available, but this binary was not installed via a \
                      cargo-dist installer, so `update` cannot replace it in place.\n\
                      Reinstall using one of:\n  \
-                     curl -LsSf https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/latest/download/flute-webhooks-installer.sh | sh\n  \
-                     brew install {REPO_OWNER}/{REPO_NAME}/flute-webhooks\n  \
-                     irm https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/latest/download/flute-webhooks-installer.ps1 | iex",
+                     curl -LsSf https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/latest/download/flute-webhooks-cli-installer.sh | sh\n  \
+                     brew install {REPO_OWNER}/{REPO_NAME}/flute-webhooks-cli\n  \
+                     irm https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/latest/download/flute-webhooks-cli-installer.ps1 | iex",
                 );
             }
             _ => println!(

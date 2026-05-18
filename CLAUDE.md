@@ -7,7 +7,7 @@ Rust 2024 edition. A CLI **and** ratatui TUI for the Flute webhook REST API. The
 Build/test/lint commands you will use most:
 
 ```bash
-cargo build --quiet          # debug build at target/debug/flute-webhook
+cargo build --quiet          # debug build at target/debug/flute-webhooks-cli
 cargo test                   # 93 tests; lib + integration; should all pass
 cargo clippy --all-targets --no-deps   # zero warnings expected
 cargo fmt                    # before any commit
@@ -20,7 +20,7 @@ CI only runs on `v*` tag pushes (cargo-dist's `release.yml`). PRs get a cheap pl
 
 - **No `.unwrap()` / `.expect()` / `panic!` in production code.** `#[cfg(test)] mod tests` blocks may use them freely. For typed API failures, propagate via `crate::api::error::ApiError`; for everything else, `anyhow::Result` + `?`. The 401-retry helper in `src/api/client.rs` is the canonical pattern for wrapping ApiError around HTTP.
 - **`--output json` must yield clean stdout.** Update notices, progress, and tracing go to stderr. The structured failure envelope (`cli::output::ErrorJson`) goes to stdout *only* when `--output json` is set and a non-TUI command fails; in that case `lib::run()` `std::process::exit(1)`s after printing to bypass anyhow's stderr formatter.
-- **TUI owns stdout** while running. Anything that would print to stdout in a TUI session must instead go to `~/.flute/flute-webhook.log` via `tracing`. Look at `init_tracing` in `src/lib.rs` for the routing rules.
+- **TUI owns stdout** while running. Anything that would print to stdout in a TUI session must instead go to `~/.flute/flute-webhooks-cli.log` via `tracing`. Look at `init_tracing` in `src/lib.rs` for the routing rules.
 - **Comments are rare.** Only when WHY is non-obvious — a hidden constraint, a workaround for a specific bug, a subtle invariant. Don't document WHAT well-named code already shows. Don't reference the current task or commit ("added for X" rots).
 - **No new docs unless asked.** `readme.md` (human), `AGENTS.md` (runtime-agent contract), and this file (CLAUDE.md) are the only docs. Don't generate planning/decision MDs unless the user asks for them. Update an existing doc rather than creating a sibling.
 - **No emojis in source files.**
@@ -70,13 +70,13 @@ tests/
 2. PR → squash-merge to `master`.
 3. `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`. cargo-dist's `release.yml` fires on `v*` tags only.
 4. The matrix builds `aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`. The Linux runner needs `libdbus-1-dev` + `pkg-config`; these are declared in `dist-workspace.toml` under `[dist.dependencies.apt]` — don't remove them.
-5. Artifacts: three platform archives + three installers (`flute-webhooks-installer.sh`, `.ps1`, `flute-webhooks.rb`).
+5. Artifacts: three platform archives + three installers (`flute-webhooks-cli-installer.sh`, `.ps1`, `flute-webhooks-cli.rb`).
 
 If a tag build fails on Linux with libdbus / pkg-config, the apt block in `dist-workspace.toml` is the place to look first.
 
 ## Things that have bitten us — don't re-break
 
-- `flute-webhook` (no s) is the binary; `flute-webhooks` (with s) is the crate / app name cargo-dist uses for installers and receipts. Both forms appear in code — preserve the existing usage when editing.
+- The binary, crate name, and cargo-dist app name are all `flute-webhooks-cli` (uniform after the v0.4.0 rename). The library name follows Rust convention and uses underscores: `flute_webhooks_cli`. Earlier versions split this into singular `flute-webhook` (binary) / plural `flute-webhooks` (crate) — old commits and `docs/legacy/build.yaml` still reference those forms; don't reintroduce the split in new code.
 - The Flute API is at the **root** of the host, not under `/api` or `/isv-api`. Don't add a path prefix to `Profile::api_base_url`.
 - Bodyless `POST`/`PUT`/`PATCH` must send `Content-Length: 0` explicitly. See `build_request` in `src/api/client.rs`.
 - macOS keychain ACLs are tied to binary signature, so every `cargo build` re-prompts. For development, prefer `cargo install --path .` then re-use that binary.

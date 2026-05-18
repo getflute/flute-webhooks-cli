@@ -1,4 +1,4 @@
-//! Integration tests for the `flute-webhook webhooks …` subcommands.
+//! Integration tests for the `flute-webhooks-cli webhooks …` subcommands.
 //!
 //! Each test stubs the Flute API with wiremock, builds an ApiClient pointed
 //! at the mock server, and drives the dispatcher in `crate::cli::webhooks`
@@ -9,10 +9,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use flute_webhook::api::ApiClient;
-use flute_webhook::auth::token::{Fetcher, TokenStore};
-use flute_webhook::cli::webhooks;
-use flute_webhook::cli::{
+use flute_webhooks_cli::api::ApiClient;
+use flute_webhooks_cli::auth::token::{Fetcher, TokenStore};
+use flute_webhooks_cli::cli::webhooks;
+use flute_webhooks_cli::cli::{
     DeliveriesCommand, EndpointStatusArg, EndpointsCommand, EventTypesCommand, OutputFormat,
     WebhooksCommand,
 };
@@ -253,7 +253,7 @@ async fn deliveries_list_attaches_filter_query_params() {
         OutputFormat::Json,
         WebhooksCommand::Deliveries(DeliveriesCommand::List {
             endpoint_id: Some("ep-7".into()),
-            status: Some(flute_webhook::cli::DeliveryStatusArg::Failed),
+            status: Some(flute_webhooks_cli::cli::DeliveryStatusArg::Failed),
             limit: 75,
         }),
     )

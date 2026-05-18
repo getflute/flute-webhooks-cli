@@ -1,19 +1,19 @@
 [package]
-name = "flute-webhooks"
-version = "0.3.0"
+name = "flute-webhooks-cli"
+version = "0.4.0"
 edition = "2024"
 description = "Terminal UI and CLI for managing Flute webhook endpoints"
-repository = "https://github.com/getflute/flute-webhooks"
-homepage = "https://github.com/getflute/flute-webhooks"
+repository = "https://github.com/getflute/flute-webhooks-cli"
+homepage = "https://github.com/getflute/flute-webhooks-cli"
 license = "MIT"
 readme = "readme.md"
 
 [[bin]]
-name = "flute-webhook"
+name = "flute-webhooks-cli"
 path = "src/main.rs"
 
 [lib]
-name = "flute_webhook"
+name = "flute_webhooks_cli"
 path = "src/lib.rs"
 
 [dependencies]

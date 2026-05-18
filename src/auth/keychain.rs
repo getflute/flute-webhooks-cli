@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
 
-const SERVICE: &str = "flute-webhook";
+const SERVICE: &str = "flute-webhooks-cli";
 
 /// Stored credentials are kept in a single keychain entry per profile, so that
 /// each app launch only triggers a single Keychain authorisation prompt instead

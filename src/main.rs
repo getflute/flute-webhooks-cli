@@ -1,3 +1,3 @@
 fn main() -> anyhow::Result<()> {
-    flute_webhook::run()
+    flute_webhooks_cli::run()
 }

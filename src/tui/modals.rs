@@ -399,12 +399,12 @@ pub fn render_update_modal(frame: &mut Frame, version: &str) {
     frame.render_widget(block, area);
     let lines = vec![
         Line::from(Span::styled(
-            format!("A newer version ({version}) of flute-webhook is available."),
+            format!("A newer version ({version}) of flute-webhooks-cli is available."),
             Style::default().fg(Color::White),
         )),
         Line::raw(""),
         Line::from(Span::styled(
-            "Run `flute-webhook update` from the command line to install it.",
+            "Run `flute-webhooks-cli update` from the command line to install it.",
             Style::default().fg(Color::White),
         )),
         Line::raw(""),
