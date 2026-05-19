@@ -11,7 +11,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            default_profile: "uat".into(),
+            default_profile: "sandbox".into(),
             poll_interval_seconds: 5,
             auto_update_check: true,
         }
@@ -71,14 +71,18 @@ pub struct Profile {
 }
 
 impl Profile {
-    pub fn uat() -> Self {
+    pub fn sandbox() -> Self {
         Self {
-            name: "uat".into(),
+            name: "sandbox".into(),
             // Canonical API path: requests to /v2/... go through the Kestrel
             // gateway (returns proper 401 with WWW-Authenticate: Bearer). The
             // /isv-api/swagger/... prefix only hosts the swagger UI; routing
             // to /isv-api/v2/... directly bypasses the gateway and 404s on
             // every endpoint except the documentation routes.
+            //
+            // The host names still carry `uat.` — that's the Flute team's
+            // canonical hostname for the sandbox environment and is not
+            // ours to rename.
             api_base_url: "https://api.uat.arise.risewithaurora.com".into(),
             oauth_url: "https://oauth.uat.arise.risewithaurora.com/oauth2/token".into(),
         }
@@ -94,7 +98,7 @@ impl Profile {
 
     pub fn by_name(name: &str) -> Option<Self> {
         match name {
-            "uat" => Some(Self::uat()),
+            "sandbox" => Some(Self::sandbox()),
             "production" | "prod" => Some(Self::production()),
             _ => None,
         }
@@ -137,9 +141,9 @@ mod tests {
     }
 
     #[test]
-    fn config_default_uses_uat_profile_and_5s() {
+    fn config_default_uses_sandbox_profile_and_5s() {
         let c = Config::default();
-        assert_eq!(c.default_profile, "uat");
+        assert_eq!(c.default_profile, "sandbox");
         assert_eq!(c.poll_interval_seconds, 5);
         assert!(c.auto_update_check);
     }
@@ -150,8 +154,11 @@ mod profile_tests {
     use super::*;
 
     #[test]
-    fn uat_profile_has_uat_hosts() {
-        let p = Profile::uat();
+    fn sandbox_profile_has_uat_hosts() {
+        // Profile is named "sandbox" but the hostnames remain uat.* — that's
+        // the Flute team's canonical sandbox URL, not ours to rename.
+        let p = Profile::sandbox();
+        assert_eq!(p.name, "sandbox");
         assert_eq!(p.api_base_url, "https://api.uat.arise.risewithaurora.com");
         assert_eq!(
             p.oauth_url,
@@ -174,7 +181,7 @@ mod profile_tests {
         // Routing guard: the API is served at the root of the host. Any
         // accidental path suffix on the base URL (e.g. /isv-api, /api) routes
         // requests away from the gateway and yields 404s. Catch that here.
-        for p in [Profile::uat(), Profile::production()] {
+        for p in [Profile::sandbox(), Profile::production()] {
             let trimmed = p.api_base_url.trim_end_matches('/');
             let path_idx = trimmed.find("//").map(|i| i + 2).unwrap_or(0);
             let after_host = &trimmed[path_idx..];
@@ -189,9 +196,11 @@ mod profile_tests {
 
     #[test]
     fn by_name_resolves_known_profiles() {
-        assert_eq!(Profile::by_name("uat").unwrap().name, "uat");
+        assert_eq!(Profile::by_name("sandbox").unwrap().name, "sandbox");
         assert_eq!(Profile::by_name("production").unwrap().name, "production");
         assert_eq!(Profile::by_name("prod").unwrap().name, "production");
         assert!(Profile::by_name("garbage").is_none());
+        // "uat" is no longer a valid profile — clean rename, no alias.
+        assert!(Profile::by_name("uat").is_none());
     }
 }

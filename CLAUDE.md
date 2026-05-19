@@ -41,7 +41,7 @@ src/
 │   ├── mod.rs            clap subcommand tree (source of truth for flags)
 │   ├── output.rs         JSON pretty-print + table fallbacks + ErrorJson envelope
 │   └── webhooks.rs       dispatcher for `webhooks …` subcommands
-├── config.rs             Config (TOML), Profile (uat/production), poll validator
+├── config.rs             Config (TOML), Profile (sandbox/production), poll validator
 ├── domain.rs             TUI-facing types (Endpoint, DeliveryLog, EventTypeMeta)
 ├── forward.rs            Listener forwarding — mirror headers + body to local URL
 ├── lib.rs                Entry point: arg parsing, tracing, runtime, dispatch

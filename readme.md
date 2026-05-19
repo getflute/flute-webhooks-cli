@@ -2,7 +2,7 @@
 
 A Rust CLI **and** terminal UI for working with Flute webhooks: manage endpoints, watch delivery logs in real time, retry failures, and forward incoming successful events to a local listener URL. Built with [ratatui](https://ratatui.rs), [reqwest](https://docs.rs/reqwest), [clap](https://docs.rs/clap), and tokio.
 
-![status](https://img.shields.io/badge/status-v0.4.0-blue)
+![status](https://img.shields.io/badge/status-v0.5.0-blue)
 [![release](https://github.com/getflute/flute-webhooks-cli/actions/workflows/release.yml/badge.svg)](https://github.com/getflute/flute-webhooks-cli/actions/workflows/release.yml)
 
 ## What it does
@@ -78,7 +78,7 @@ flute-webhooks-cli auth login
 
 You'll be prompted for `client_id` and `client_secret`. The secret prompt is hidden (no echo). Credentials are stored in your OS keychain — never in plaintext on disk.
 
-By default this stores credentials for the **uat** profile. To set up production:
+By default this stores credentials for the **sandbox** profile. To set up production:
 
 ```bash
 flute-webhooks-cli --profile production auth login
@@ -135,7 +135,7 @@ flute-webhooks-cli listen --forward-to http://127.0.0.1:3000/webhook
 flute-webhooks-cli update
 ```
 
-Global flags (work on every subcommand): `--profile <uat|production>`, `--debug`, `--output table|json`.
+Global flags (work on every subcommand): `--profile <sandbox|production>`, `--debug`, `--output table|json`.
 
 ## TUI key bindings
 
@@ -158,7 +158,7 @@ While typing in a text field (URL or Name), single-character keys like `q`, `c`,
 Optional `~/.flute/config.toml`:
 
 ```toml
-default_profile = "uat"          # uat | production
+default_profile = "sandbox"      # sandbox | production
 poll_interval_seconds = 5        # 5–60; out of range falls back to 5 with a warning
 auto_update_check = true         # check GitHub Releases at most once / 24h
 ```
@@ -205,7 +205,7 @@ Without `--debug`, default tracing is INFO/WARN — non-TUI commands write to st
 
 | Profile | API base | OAuth URL |
 |---|---|---|
-| `uat` (default) | `https://api.uat.arise.risewithaurora.com` | `https://oauth.uat.arise.risewithaurora.com/oauth2/token` |
+| `sandbox` (default) | `https://api.uat.arise.risewithaurora.com` | `https://oauth.uat.arise.risewithaurora.com/oauth2/token` |
 | `production` (alias `prod`) | `https://api.arise.risewithaurora.com` | `https://oauth.arise.risewithaurora.com/oauth2/token` |
 
 Use `--profile` (global flag, accepted before or after the subcommand). Active profile is shown in the dashboard title.
@@ -266,7 +266,9 @@ The workflow only fires on tags matching `v*` (plus manual `workflow_dispatch` f
 
 ## Troubleshooting
 
-**`no credentials for [uat]`** — run `flute-webhooks-cli auth login`.
+**`no credentials for [sandbox]`** — run `flute-webhooks-cli auth login`.
+
+**`unknown profile: uat`** — the `uat` profile was renamed to `sandbox` in v0.5.0. Run `flute-webhooks-cli auth login` to register credentials under the new name (your old `uat` keychain entry stays orphaned until manually removed), and update any `FLUTE_PROFILE=uat` env vars or `default_profile = "uat"` config entries to `sandbox`.
 
 **Terminal looks broken after a crash** — the panic hook should restore it automatically; if it didn't, run `reset` or `stty sane`.
 

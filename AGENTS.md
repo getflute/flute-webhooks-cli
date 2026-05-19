@@ -101,7 +101,7 @@ Branch on `kind` first, then `status` for retry/backoff decisions:
 The agent-friendly path bypasses the OS keychain entirely via env vars:
 
 ```bash
-FLUTE_PROFILE=uat \
+FLUTE_PROFILE=sandbox \
 FLUTE_CLIENT_ID=… \
 FLUTE_CLIENT_SECRET=… \
 flute-webhooks-cli --output json webhooks endpoints list
@@ -113,7 +113,7 @@ A bearer token is fetched automatically from `oauth_url` on demand, cached for t
 
 ## Profiles and global flags
 
-- `--profile uat` (default) or `--profile production` (alias `prod`)
+- `--profile sandbox` (default) or `--profile production` (alias `prod`)
 - `--output json` — see Output contract above
 - `--debug` — verbose HTTP traces. For agents, prefer `--output json` and parse `correlation_id` from the error envelope; only set `--debug` when an operator is investigating a specific failure.
 
