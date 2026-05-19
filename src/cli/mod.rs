@@ -17,7 +17,7 @@ pub mod webhooks;
     about = "Flute Webhooks TUI and helpers"
 )]
 pub struct Cli {
-    #[arg(long, env = "FLUTE_PROFILE", default_value = "uat", global = true)]
+    #[arg(long, env = "FLUTE_PROFILE", default_value = "sandbox", global = true)]
     pub profile: String,
 
     /// Print every HTTP request and response (status, URL, body) at debug
