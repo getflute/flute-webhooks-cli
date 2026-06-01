@@ -17,6 +17,13 @@ install-path = "CARGO_HOME"
 hosting = "github"
 # Whether to install an updater program
 install-updater = false
+# Homebrew tap to publish the formula to on every release. The HOMEBREW_TAP_TOKEN
+# secret on the main repo carries a fine-grained PAT with Contents: write on
+# the tap. Without this block, cargo-dist only attaches the .rb file to the
+# Release page; brew users have to install via direct URL instead of
+# `brew install getflute/flute-webhooks-cli/flute-webhooks-cli`.
+tap = "getflute/homebrew-flute-webhooks-cli"
+publish-jobs = ["homebrew"]
 
 # System packages required at build time on each target's runner. The
 # keyring crate's `linux-native-sync-persistent` backend links against
