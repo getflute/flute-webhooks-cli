@@ -79,20 +79,16 @@ impl Profile {
             // /isv-api/swagger/... prefix only hosts the swagger UI; routing
             // to /isv-api/v2/... directly bypasses the gateway and 404s on
             // every endpoint except the documentation routes.
-            //
-            // The host names still carry `uat.` — that's the Flute team's
-            // canonical hostname for the sandbox environment and is not
-            // ours to rename.
-            api_base_url: "https://api.uat.arise.risewithaurora.com".into(),
-            oauth_url: "https://oauth.uat.arise.risewithaurora.com/oauth2/token".into(),
+            api_base_url: "https://sandbox.api.flute.com".into(),
+            oauth_url: "https://sandbox.oauth.api.flute.com/oauth2/token".into(),
         }
     }
 
     pub fn production() -> Self {
         Self {
             name: "production".into(),
-            api_base_url: "https://api.arise.risewithaurora.com".into(),
-            oauth_url: "https://oauth.arise.risewithaurora.com/oauth2/token".into(),
+            api_base_url: "https://api.flute.com".into(),
+            oauth_url: "https://oauth.api.flute.com/oauth2/token".into(),
         }
     }
 
@@ -154,26 +150,18 @@ mod profile_tests {
     use super::*;
 
     #[test]
-    fn sandbox_profile_has_uat_hosts() {
-        // Profile is named "sandbox" but the hostnames remain uat.* — that's
-        // the Flute team's canonical sandbox URL, not ours to rename.
+    fn sandbox_profile_has_flute_hosts() {
         let p = Profile::sandbox();
         assert_eq!(p.name, "sandbox");
-        assert_eq!(p.api_base_url, "https://api.uat.arise.risewithaurora.com");
-        assert_eq!(
-            p.oauth_url,
-            "https://oauth.uat.arise.risewithaurora.com/oauth2/token"
-        );
+        assert_eq!(p.api_base_url, "https://sandbox.api.flute.com");
+        assert_eq!(p.oauth_url, "https://sandbox.oauth.api.flute.com/oauth2/token");
     }
 
     #[test]
-    fn production_profile_has_prod_hosts() {
+    fn production_profile_has_flute_hosts() {
         let p = Profile::production();
-        assert_eq!(p.api_base_url, "https://api.arise.risewithaurora.com");
-        assert_eq!(
-            p.oauth_url,
-            "https://oauth.arise.risewithaurora.com/oauth2/token"
-        );
+        assert_eq!(p.api_base_url, "https://api.flute.com");
+        assert_eq!(p.oauth_url, "https://oauth.api.flute.com/oauth2/token");
     }
 
     #[test]
