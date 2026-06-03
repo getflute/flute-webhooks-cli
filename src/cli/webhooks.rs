@@ -214,14 +214,17 @@ async fn run_deliveries(api: &ApiClient, fmt: OutputFormat, cmd: DeliveriesComma
     }
 }
 
-/// Build the `?webhookId=…&status=…&limit=…` query for the deliveries list.
+/// Build the `?pageSize=…&webhookId=…&status=…` query for the deliveries list.
+///
+/// Post-2026-06 rebrand the server expects `pageSize` (not `limit`) to cap
+/// the response. The CLI flag is still `--limit` for historical ergonomics.
 fn build_deliveries_query(
     endpoint_id: Option<&str>,
     status: Option<DeliveryStatusArg>,
     limit: u32,
 ) -> String {
     let mut parts: Vec<String> = Vec::new();
-    parts.push(format!("limit={limit}"));
+    parts.push(format!("pageSize={limit}"));
     if let Some(id) = endpoint_id {
         parts.push(format!("webhookId={id}"));
     }
@@ -277,14 +280,14 @@ mod tests {
     #[test]
     fn deliveries_query_is_well_formed() {
         let q = build_deliveries_query(None, None, 25);
-        assert_eq!(q, "?limit=25");
+        assert_eq!(q, "?pageSize=25");
 
         let q = build_deliveries_query(Some("ep-1"), Some(DeliveryStatusArg::Success), 100);
-        assert_eq!(q, "?limit=100&webhookId=ep-1&status=Success");
+        assert_eq!(q, "?pageSize=100&webhookId=ep-1&status=Success");
 
         // The API uses "Failure" (PascalCase) for the failed status value,
         // even though we expose `--status failed` for nicer ergonomics.
         let q = build_deliveries_query(None, Some(DeliveryStatusArg::Failed), 1);
-        assert_eq!(q, "?limit=1&status=Failure");
+        assert_eq!(q, "?pageSize=1&status=Failure");
     }
 }

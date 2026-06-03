@@ -236,7 +236,7 @@ async fn deliveries_list_attaches_filter_query_params() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/v2/webhooks/delivery-logs"))
-        .and(query_param("limit", "75"))
+        .and(query_param("pageSize", "75"))
         .and(query_param("webhookId", "ep-7"))
         .and(query_param("status", "Failure"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
