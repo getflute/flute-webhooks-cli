@@ -45,8 +45,8 @@ async fn endpoints_list_success_uses_get() {
         .and(path("/v2/webhooks/endpoints"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "data": [{
-                "id": "ep-1",
-                "name": "first",
+                "endpointId": "ep-1",
+                "webhookName": "first",
                 "endpointUrl": "https://x",
                 "status": "Active",
                 "eventTypes": ["ping"],
@@ -74,16 +74,16 @@ async fn endpoints_create_sends_expected_request_body() {
     Mock::given(method("POST"))
         .and(path("/v2/webhooks/endpoints"))
         .and(body_json(json!({
-            "name": "my-hook",
+            "webhookName": "my-hook",
             "endpointUrl": "https://example.com/hook",
             "eventTypes": ["transaction.card.captured", "refund.completed"]
         })))
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
-            "id": "ep-new",
-            "name": "my-hook",
+            "endpointId": "ep-new",
+            "webhookName": "my-hook",
             "endpointUrl": "https://example.com/hook",
             "status": "Active",
-            "secret": "whsec_test",
+            "hmacSecret": "whsec_test",
             "eventTypes": ["transaction.card.captured", "refund.completed"],
             "createdAt": "2026-05-04T00:00:00Z"
         })))
@@ -134,8 +134,8 @@ async fn endpoints_update_does_get_then_put_with_merged_state() {
     Mock::given(method("GET"))
         .and(path("/v2/webhooks/endpoints/ep-1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "id": "ep-1",
-            "name": "preserved-name",
+            "endpointId": "ep-1",
+            "webhookName": "preserved-name",
             "endpointUrl": "https://preserved.example.com/hook",
             "status": "Active",
             "eventTypes": ["a.b", "c.d"],
@@ -149,14 +149,14 @@ async fn endpoints_update_does_get_then_put_with_merged_state() {
     Mock::given(method("PUT"))
         .and(path("/v2/webhooks/endpoints/ep-1"))
         .and(body_json(json!({
-            "name": "preserved-name",
+            "webhookName": "preserved-name",
             "endpointUrl": "https://preserved.example.com/hook",
             "status": "Inactive",
             "eventTypes": ["a.b", "c.d"]
         })))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "id": "ep-1",
-            "name": "preserved-name",
+            "endpointId": "ep-1",
+            "webhookName": "preserved-name",
             "endpointUrl": "https://preserved.example.com/hook",
             "status": "Inactive",
             "eventTypes": ["a.b", "c.d"],
@@ -214,7 +214,7 @@ async fn endpoints_ping_returns_listener_response() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "success": true,
             "statusCode": 200,
-            "durationMs": 42,
+            "roundTripDurationMs": 42,
             "errorMessage": null
         })))
         .expect(1)
@@ -295,8 +295,8 @@ async fn event_types_list_pretty_prints_grouped_catalog() {
         .and(path("/v2/webhooks/event-types"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "data": [
-                { "id": 1, "name": "transaction.card.captured", "description": "captured", "group": "Card Transactions" },
-                { "id": 2, "name": "settlement.batch.completed", "description": "settled", "group": "Settlements" }
+                { "eventTypeId": 1, "name": "transaction.card.captured", "description": "captured", "group": "Card Transactions" },
+                { "eventTypeId": 2, "name": "settlement.batch.completed", "description": "settled", "group": "Settlements" }
             ]
         })))
         .expect(1)

@@ -252,6 +252,7 @@ async fn list_delivery_logs_with_path(
         .await
         .map_err(|e| anyhow!("auth: {e}"))?;
     let url = format!("{}{}", api.base_url, path);
+    tracing::debug!(method = "GET", url = %url, "HTTP request");
     let resp = api
         .http
         .get(&url)
@@ -262,6 +263,7 @@ async fn list_delivery_logs_with_path(
         .map_err(|e| anyhow!("transport: {e}"))?;
     let status = resp.status();
     let text = resp.text().await.map_err(|e| anyhow!("body: {e}"))?;
+    tracing::debug!(method = "GET", url = %url, status = status.as_u16(), body = %text, "HTTP response");
     if !status.is_success() {
         return Err(anyhow!("API {} on {}: {}", status.as_u16(), path, text));
     }

@@ -248,9 +248,13 @@ pub fn print_delivery_log(log: &DeliveryLogDetailDto, fmt: OutputFormat) -> anyh
         log.event_type.as_deref().unwrap_or(""),
         log.event_id
     );
+    let http = log
+        .response_status_code
+        .map(|c| c.to_string())
+        .unwrap_or_else(|| "—".into());
     println!(
-        "Status:    {:?}  HTTP={:?}  Duration={}ms  Attempt={}",
-        log.status, log.response_status_code, log.duration_ms, log.attempt_number
+        "Status:    {:?}  HTTP={http}  Duration={}ms  Attempt={}",
+        log.status, log.duration_ms, log.attempt_number
     );
     println!("Created:   {}", log.created_on);
     if let Some(err) = &log.error_message {

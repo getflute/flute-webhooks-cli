@@ -16,7 +16,13 @@ pub enum WebhookDeliveryLogStatus {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetWebhookEndpointDto {
+    // As of the 2026-06 flute.com API rebrand, list/get responses namespace
+    // these two fields: the endpoint identifier is no longer just `id`, and
+    // the human-readable label is no longer just `name`. Rust field names
+    // stay short for ergonomics; the wire form uses the new names.
+    #[serde(rename = "endpointId")]
     pub id: String,
+    #[serde(rename = "webhookName")]
     pub name: Option<String>,
     pub endpoint_url: Option<String>,
     pub status: WebhookEndpointStatus,
@@ -34,6 +40,7 @@ pub struct ListWebhookEndpointsDto {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWebhookEndpointRequest {
+    #[serde(rename = "webhookName")]
     pub name: String,
     pub endpoint_url: String,
     pub event_types: Vec<String>,
@@ -42,10 +49,16 @@ pub struct CreateWebhookEndpointRequest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWebhookEndpointResponse {
+    #[serde(rename = "endpointId")]
     pub id: String,
+    #[serde(rename = "webhookName")]
     pub name: Option<String>,
     pub endpoint_url: Option<String>,
     pub status: WebhookEndpointStatus,
+    // Server returns the HMAC under `hmacSecret` (post-2026-06 rebrand).
+    // Older releases used `secret`; keep that as an alias so a server in a
+    // mixed state still surfaces the field instead of silently dropping it.
+    #[serde(rename = "hmacSecret", alias = "secret")]
     pub secret: Option<String>,
     pub event_types: Option<Vec<String>>,
     pub created_at: Option<DateTime<Utc>>,
@@ -54,6 +67,7 @@ pub struct CreateWebhookEndpointResponse {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateWebhookEndpointRequest {
+    #[serde(rename = "webhookName")]
     pub name: String,
     pub endpoint_url: String,
     pub status: WebhookEndpointStatus,
@@ -63,6 +77,7 @@ pub struct UpdateWebhookEndpointRequest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventTypeDto {
+    #[serde(rename = "eventTypeId")]
     pub id: i32,
     pub name: Option<String>,
     pub description: Option<String>,
@@ -78,6 +93,9 @@ pub struct ListEventTypesDto {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeliveryLogSummaryDto {
+    // Post-2026-06 flute.com API: `id`, `status`, and the duration field were
+    // namespaced. Rust field names stay short; wire names follow the server.
+    #[serde(rename = "deliveryLogId")]
     pub id: String,
     pub webhook_endpoint_id: String,
     pub webhook_name: Option<String>,
@@ -85,8 +103,10 @@ pub struct DeliveryLogSummaryDto {
     pub event_id: String,
     pub event_type: Option<String>,
     pub attempt_number: i32,
+    #[serde(rename = "deliveryAttemptStatus")]
     pub status: WebhookDeliveryLogStatus,
     pub response_status_code: Option<i32>,
+    #[serde(rename = "roundTripDurationMs")]
     pub duration_ms: i32,
     pub error_message: Option<String>,
     pub created_on: DateTime<Utc>,
@@ -95,6 +115,7 @@ pub struct DeliveryLogSummaryDto {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeliveryLogDetailDto {
+    #[serde(rename = "deliveryLogId")]
     pub id: String,
     pub webhook_endpoint_id: String,
     pub webhook_name: Option<String>,
@@ -102,8 +123,10 @@ pub struct DeliveryLogDetailDto {
     pub event_id: String,
     pub event_type: Option<String>,
     pub attempt_number: i32,
+    #[serde(rename = "deliveryAttemptStatus")]
     pub status: WebhookDeliveryLogStatus,
     pub response_status_code: Option<i32>,
+    #[serde(rename = "roundTripDurationMs")]
     pub duration_ms: i32,
     pub error_message: Option<String>,
     pub created_on: DateTime<Utc>,
@@ -130,6 +153,9 @@ pub struct ListDeliveryLogsDto {
 pub struct PingResponseDto {
     pub success: bool,
     pub status_code: Option<i32>,
+    // Same rename as DeliveryLogSummaryDto: server now reports the timing
+    // field as `roundTripDurationMs` post-2026-06 rebrand.
+    #[serde(rename = "roundTripDurationMs")]
     pub duration_ms: i32,
     pub error_message: Option<String>,
 }
@@ -139,18 +165,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn deserializes_endpoint_camel_case() {
-        let json = r#"{"id":"00000000-0000-0000-0000-000000000001","name":"My EP","endpointUrl":"https://x","status":"Active","eventTypes":["transaction.card.captured"],"createdOn":"2026-04-30T12:00:00Z","modifiedOn":"2026-04-30T12:00:00Z"}"#;
+    fn deserializes_endpoint_with_namespaced_field_names() {
+        // Post-2026-06 flute.com API: `id` is wire-encoded as `endpointId`,
+        // `name` as `webhookName`. Other fields are unchanged camelCase.
+        let json = r#"{"endpointId":"00000000-0000-0000-0000-000000000001","webhookName":"My EP","endpointUrl":"https://x","status":"Active","eventTypes":["transaction.card.captured"],"createdOn":"2026-04-30T12:00:00Z","modifiedOn":"2026-04-30T12:00:00Z"}"#;
         let v: GetWebhookEndpointDto = serde_json::from_str(json).unwrap();
         assert_eq!(v.id, "00000000-0000-0000-0000-000000000001");
+        assert_eq!(v.name.as_deref(), Some("My EP"));
         assert_eq!(v.endpoint_url.as_deref(), Some("https://x"));
         assert_eq!(v.status, WebhookEndpointStatus::Active);
         assert_eq!(v.event_types.unwrap(), vec!["transaction.card.captured"]);
     }
 
     #[test]
+    fn serializes_create_request_with_webhook_name() {
+        // The server expects `webhookName` on write paths, not `name`.
+        let req = CreateWebhookEndpointRequest {
+            name: "My EP".into(),
+            endpoint_url: "https://x".into(),
+            event_types: vec!["transaction.card.captured".into()],
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert!(
+            json.get("webhookName").is_some(),
+            "wire field should be webhookName, got: {json}"
+        );
+        assert!(
+            json.get("name").is_none(),
+            "legacy `name` must not appear: {json}"
+        );
+    }
+
+    #[test]
     fn deserializes_event_type_grouping() {
-        let json = r#"{"id":1,"name":"transaction.card.captured","description":"d","group":"Card Transactions"}"#;
+        let json = r#"{"eventTypeId":1,"name":"transaction.card.captured","description":"d","group":"Card Transactions"}"#;
         let v: EventTypeDto = serde_json::from_str(json).unwrap();
         assert_eq!(v.name.unwrap(), "transaction.card.captured");
         assert_eq!(v.group.unwrap(), "Card Transactions");
@@ -158,7 +206,7 @@ mod tests {
 
     #[test]
     fn deserializes_delivery_log_summary() {
-        let json = r#"{"id":"00000000-0000-0000-0000-0000000000aa","webhookEndpointId":"00000000-0000-0000-0000-0000000000bb","webhookName":"X","endpointUrl":"https://x","eventId":"00000000-0000-0000-0000-0000000000cc","eventType":"transaction.card.captured","attemptNumber":1,"status":"Success","responseStatusCode":200,"durationMs":120,"errorMessage":null,"createdOn":"2026-04-30T12:00:00Z"}"#;
+        let json = r#"{"deliveryLogId":"00000000-0000-0000-0000-0000000000aa","webhookEndpointId":"00000000-0000-0000-0000-0000000000bb","webhookName":"X","endpointUrl":"https://x","eventId":"00000000-0000-0000-0000-0000000000cc","eventType":"transaction.card.captured","attemptNumber":1,"deliveryAttemptStatus":"Success","responseStatusCode":200,"roundTripDurationMs":120,"errorMessage":null,"createdOn":"2026-04-30T12:00:00Z"}"#;
         let v: DeliveryLogSummaryDto = serde_json::from_str(json).unwrap();
         assert_eq!(v.status, WebhookDeliveryLogStatus::Success);
         assert_eq!(v.response_status_code, Some(200));
@@ -167,7 +215,7 @@ mod tests {
     #[test]
     fn deserializes_delivery_logs_list_with_items_and_total() {
         // Matches the live API shape: { items: [...], total: N }.
-        let json = r#"{"items":[{"id":"00000000-0000-0000-0000-0000000000aa","webhookEndpointId":"00000000-0000-0000-0000-0000000000bb","eventId":"00000000-0000-0000-0000-0000000000cc","eventType":"transaction.card.captured","attemptNumber":1,"status":"Success","responseStatusCode":200,"durationMs":12,"errorMessage":null,"createdOn":"2026-04-30T12:00:00Z","webhookName":null,"endpointUrl":null}],"total":4242}"#;
+        let json = r#"{"items":[{"deliveryLogId":"00000000-0000-0000-0000-0000000000aa","webhookEndpointId":"00000000-0000-0000-0000-0000000000bb","eventId":"00000000-0000-0000-0000-0000000000cc","eventType":"transaction.card.captured","attemptNumber":1,"deliveryAttemptStatus":"Success","responseStatusCode":200,"roundTripDurationMs":12,"errorMessage":null,"createdOn":"2026-04-30T12:00:00Z","webhookName":null,"endpointUrl":null}],"total":4242}"#;
         let v: ListDeliveryLogsDto = serde_json::from_str(json).unwrap();
         assert_eq!(v.items.unwrap().len(), 1);
         assert_eq!(v.total, Some(4242));

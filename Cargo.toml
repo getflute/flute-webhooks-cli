@@ -1,6 +1,6 @@
 [package]
 name = "flute-webhooks-cli"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 description = "Terminal UI and CLI for managing Flute webhook endpoints"
 repository = "https://github.com/getflute/flute-webhooks-cli"
