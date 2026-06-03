@@ -185,7 +185,7 @@ impl ApiClient {
     pub async fn list_delivery_logs(&self, limit: u32) -> Result<ListDeliveryLogsDto, ApiError> {
         self.send(
             Method::GET,
-            &format!("/v2/webhooks/delivery-logs?limit={limit}"),
+            &format!("/v2/webhooks/delivery-logs?pageSize={limit}"),
             None,
         )
         .await
