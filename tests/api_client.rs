@@ -29,7 +29,7 @@ async fn list_endpoints_round_trips() {
     let server = MockServer::start().await;
     Mock::given(method("GET")).and(path("/v2/webhooks/endpoints"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "data": [{"id":"00000000-0000-0000-0000-000000000001","name":"X","endpointUrl":"https://x","status":"Active","eventTypes":["ping"],"createdOn":"2026-04-30T12:00:00Z","modifiedOn":"2026-04-30T12:00:00Z"}]
+            "data": [{"endpointId":"00000000-0000-0000-0000-000000000001","webhookName":"X","endpointUrl":"https://x","status":"Active","eventTypes":["ping"],"createdOn":"2026-04-30T12:00:00Z","modifiedOn":"2026-04-30T12:00:00Z"}]
         })))
         .mount(&server).await;
 
@@ -60,13 +60,13 @@ async fn list_delivery_logs_round_trips() {
         .and(path("/v2/webhooks/delivery-logs"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "items": [{
-                "id":"00000000-0000-0000-0000-00000000000a",
+                "deliveryLogId":"00000000-0000-0000-0000-00000000000a",
                 "webhookEndpointId":"00000000-0000-0000-0000-00000000000b",
                 "webhookName":"X","endpointUrl":"https://x",
                 "eventId":"00000000-0000-0000-0000-00000000000c",
                 "eventType":"transaction.card.captured",
-                "attemptNumber":1,"status":"Success","responseStatusCode":200,
-                "durationMs":12,"errorMessage":null,
+                "attemptNumber":1,"deliveryAttemptStatus":"Success","responseStatusCode":200,
+                "roundTripDurationMs":12,"errorMessage":null,
                 "createdOn":"2026-04-30T12:00:00Z"
             }],
             "total": 1
@@ -114,7 +114,7 @@ async fn refreshes_token_and_retries_once_on_401() {
         .and(path("/v2/webhooks/endpoints"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "data": [{
-                "id":"00000000-0000-0000-0000-000000000099","name":"after-refresh",
+                "endpointId":"00000000-0000-0000-0000-000000000099","webhookName":"after-refresh",
                 "endpointUrl":"https://x","status":"Active","eventTypes":["ping"],
                 "createdOn":"2026-05-04T12:00:00Z","modifiedOn":"2026-05-04T12:00:00Z"
             }]
@@ -160,7 +160,7 @@ async fn bodyless_post_sends_content_length_zero() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "success": true,
             "statusCode": 200,
-            "durationMs": 12,
+            "roundTripDurationMs": 12,
             "errorMessage": null
         })))
         .expect(1)
