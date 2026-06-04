@@ -173,14 +173,14 @@ async fn run_deliveries(api: &ApiClient, fmt: OutputFormat, cmd: DeliveriesComma
             status,
             limit,
         } => {
-            // Build the query string. ApiClient::list_delivery_logs takes only
-            // the `limit`; for filters we hit the same path with extra query
-            // params via a small helper rather than expanding ApiClient — the
-            // shape is stable and only used here.
+            // Build the query string and hand it to ApiClient — that path goes
+            // through send(), which gives us the 401 → refresh → retry loop and
+            // structured ApiError on non-2xx responses.
             let query = build_deliveries_query(endpoint_id.as_deref(), status, limit);
-            let path = format!("/v2/webhooks/delivery-logs{query}");
-            let resp: crate::api::models::ListDeliveryLogsDto =
-                list_delivery_logs_with_path(api, &path).await?;
+            let resp = api
+                .list_delivery_logs_query(&query)
+                .await
+                .context("list deliveries")?;
             let logs: Vec<DeliveryLog> = resp
                 .items
                 .unwrap_or_default()
@@ -241,37 +241,6 @@ fn build_deliveries_query(
     } else {
         format!("?{}", parts.join("&"))
     }
-}
-
-/// Minimal helper to hit a delivery-logs path with custom query params. Lives
-/// here (not on ApiClient) because the filter combinations are CLI-specific.
-async fn list_delivery_logs_with_path(
-    api: &ApiClient,
-    path: &str,
-) -> Result<crate::api::models::ListDeliveryLogsDto> {
-    use reqwest::header::ACCEPT;
-    let token = api
-        .tokens
-        .bearer()
-        .await
-        .context("auth")?;
-    let url = format!("{}{}", api.base_url, path);
-    tracing::debug!(method = "GET", url = %url, "HTTP request");
-    let resp = api
-        .http
-        .get(&url)
-        .bearer_auth(token)
-        .header(ACCEPT, "application/json")
-        .send()
-        .await
-        .context("transport")?;
-    let status = resp.status();
-    let text = resp.text().await.context("body")?;
-    tracing::debug!(method = "GET", url = %url, status = status.as_u16(), body = %text, "HTTP response");
-    if !status.is_success() {
-        return Err(anyhow!("API {} on {}: {}", status.as_u16(), path, text));
-    }
-    serde_json::from_str(&text).context("decoding delivery-logs response")
 }
 
 #[cfg(test)]

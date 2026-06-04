@@ -183,9 +183,22 @@ impl ApiClient {
     }
 
     pub async fn list_delivery_logs(&self, limit: u32) -> Result<ListDeliveryLogsDto, ApiError> {
+        self.list_delivery_logs_query(&format!("?pageSize={limit}"))
+            .await
+    }
+
+    /// List delivery logs with a pre-built query string (must include the
+    /// leading `?` when non-empty). Used by the CLI for filtered queries —
+    /// goes through the shared `send()` helper so 401 retries and
+    /// `from_aspnet` error parsing kick in, instead of the previous
+    /// bare-metal HTTP path that lost both.
+    pub async fn list_delivery_logs_query(
+        &self,
+        query: &str,
+    ) -> Result<ListDeliveryLogsDto, ApiError> {
         self.send(
             Method::GET,
-            &format!("/v2/webhooks/delivery-logs?pageSize={limit}"),
+            &format!("/v2/webhooks/delivery-logs{query}"),
             None,
         )
         .await
