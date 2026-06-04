@@ -181,7 +181,7 @@ async fn listen(profile: &str, forward_to: &str) -> anyhow::Result<()> {
     // Prime seen_log_ids with the first page of currently-known logs so we
     // don't replay history on startup. From here on we only forward genuinely
     // new successful arrivals.
-    let mut seen: HashSet<String> = match api.list_delivery_logs(500).await {
+    let mut seen: HashSet<String> = match api.list_delivery_logs(100).await {
         Ok(r) => r
             .items
             .unwrap_or_default()
@@ -197,7 +197,7 @@ async fn listen(profile: &str, forward_to: &str) -> anyhow::Result<()> {
     loop {
         tokio::time::sleep(Duration::from_secs(secs)).await;
 
-        match api.list_delivery_logs(500).await {
+        match api.list_delivery_logs(100).await {
             Ok(resp) => {
                 let logs = resp.items.unwrap_or_default();
                 for l in logs.iter() {

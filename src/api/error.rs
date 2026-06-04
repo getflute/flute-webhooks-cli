@@ -5,7 +5,7 @@ pub enum ApiError {
     #[error("transport error: {0}")]
     Transport(#[from] reqwest::Error),
 
-    #[error("API {status} (correlation_id={correlation_id:?}): {message}")]
+    #[error("API {status} (correlation_id={cid}): {message}", cid = correlation_id.as_deref().unwrap_or("—"))]
     Api {
         status: u16,
         correlation_id: Option<String>,

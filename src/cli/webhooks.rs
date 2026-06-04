@@ -29,7 +29,7 @@ async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand
             let resp = api
                 .list_endpoints()
                 .await
-                .map_err(|e| anyhow!("list endpoints: {e}"))?;
+                .context("list endpoints")?;
             let data = resp.data.unwrap_or_default();
             output::print_endpoints(&data, fmt)
         }
@@ -37,7 +37,7 @@ async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand
             let ep = api
                 .get_endpoint(&id)
                 .await
-                .map_err(|e| anyhow!("get endpoint {id}: {e}"))?;
+                .with_context(|| format!("get endpoint {id}"))?;
             output::print_endpoint(&ep, fmt)
         }
         EndpointsCommand::Create { url, events, name } => {
@@ -54,7 +54,7 @@ async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand
             let resp = api
                 .create_endpoint(&req)
                 .await
-                .map_err(|e| anyhow!("create endpoint: {e}"))?;
+                .context("create endpoint")?;
             // Always emit JSON-pretty for create so the user gets the secret —
             // the table form would truncate it. The --output flag chooses
             // between `--output json` (full struct) and `--output table` which
@@ -94,7 +94,7 @@ async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand
             let current = api
                 .get_endpoint(&id)
                 .await
-                .map_err(|e| anyhow!("get endpoint {id}: {e}"))?;
+                .with_context(|| format!("get endpoint {id}"))?;
             let merged = UpdateWebhookEndpointRequest {
                 name: name.unwrap_or_else(|| current.name.clone().unwrap_or_default()),
                 endpoint_url: url
@@ -110,7 +110,7 @@ async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand
             let resp = api
                 .update_endpoint(&id, &merged)
                 .await
-                .map_err(|e| anyhow!("update endpoint {id}: {e}"))?;
+                .with_context(|| format!("update endpoint {id}"))?;
             output::print_endpoint(&resp, fmt)
         }
         EndpointsCommand::Delete { id, yes } => {
@@ -130,7 +130,7 @@ async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand
             }
             api.delete_endpoint(&id)
                 .await
-                .map_err(|e| anyhow!("delete endpoint {id}: {e}"))?;
+                .with_context(|| format!("delete endpoint {id}"))?;
             if fmt == OutputFormat::Json {
                 println!(r#"{{"deleted":"{id}"}}"#);
             } else {
@@ -142,7 +142,7 @@ async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand
             let resp = api
                 .ping_endpoint(&id)
                 .await
-                .map_err(|e| anyhow!("ping endpoint {id}: {e}"))?;
+                .with_context(|| format!("ping endpoint {id}"))?;
             output::print_ping(&resp, fmt)
         }
     }
@@ -154,7 +154,7 @@ async fn run_event_types(api: &ApiClient, fmt: OutputFormat, cmd: EventTypesComm
             let resp = api
                 .list_event_types()
                 .await
-                .map_err(|e| anyhow!("list event types: {e}"))?;
+                .context("list event types")?;
             let metas: Vec<EventTypeMeta> = resp
                 .data
                 .unwrap_or_default()
@@ -173,14 +173,14 @@ async fn run_deliveries(api: &ApiClient, fmt: OutputFormat, cmd: DeliveriesComma
             status,
             limit,
         } => {
-            // Build the query string. ApiClient::list_delivery_logs takes only
-            // the `limit`; for filters we hit the same path with extra query
-            // params via a small helper rather than expanding ApiClient — the
-            // shape is stable and only used here.
+            // Build the query string and hand it to ApiClient — that path goes
+            // through send(), which gives us the 401 → refresh → retry loop and
+            // structured ApiError on non-2xx responses.
             let query = build_deliveries_query(endpoint_id.as_deref(), status, limit);
-            let path = format!("/v2/webhooks/delivery-logs{query}");
-            let resp: crate::api::models::ListDeliveryLogsDto =
-                list_delivery_logs_with_path(api, &path).await?;
+            let resp = api
+                .list_delivery_logs_query(&query)
+                .await
+                .context("list deliveries")?;
             let logs: Vec<DeliveryLog> = resp
                 .items
                 .unwrap_or_default()
@@ -193,14 +193,14 @@ async fn run_deliveries(api: &ApiClient, fmt: OutputFormat, cmd: DeliveriesComma
             let detail = api
                 .get_delivery_log(&id)
                 .await
-                .map_err(|e| anyhow!("get delivery log {id}: {e}"))?;
+                .with_context(|| format!("get delivery log {id}"))?;
             output::print_delivery_log(&detail, fmt)
         }
         DeliveriesCommand::Retry { id } => {
             let resp = api
                 .retry_delivery(&id)
                 .await
-                .map_err(|e| anyhow!("retry delivery {id}: {e}"))?;
+                .with_context(|| format!("retry delivery {id}"))?;
             // Server returns a small JSON envelope — print as-is regardless of
             // format. Table mode just shows the JSON since there's no
             // domain-level Rust type for the retry response yet.
@@ -232,6 +232,7 @@ fn build_deliveries_query(
         let v = match s {
             DeliveryStatusArg::Success => "Success",
             DeliveryStatusArg::Failed => "Failure",
+            DeliveryStatusArg::Pending => "Pending",
         };
         parts.push(format!("status={v}"));
     }
@@ -240,37 +241,6 @@ fn build_deliveries_query(
     } else {
         format!("?{}", parts.join("&"))
     }
-}
-
-/// Minimal helper to hit a delivery-logs path with custom query params. Lives
-/// here (not on ApiClient) because the filter combinations are CLI-specific.
-async fn list_delivery_logs_with_path(
-    api: &ApiClient,
-    path: &str,
-) -> Result<crate::api::models::ListDeliveryLogsDto> {
-    use reqwest::header::ACCEPT;
-    let token = api
-        .tokens
-        .bearer()
-        .await
-        .map_err(|e| anyhow!("auth: {e}"))?;
-    let url = format!("{}{}", api.base_url, path);
-    tracing::debug!(method = "GET", url = %url, "HTTP request");
-    let resp = api
-        .http
-        .get(&url)
-        .bearer_auth(token)
-        .header(ACCEPT, "application/json")
-        .send()
-        .await
-        .map_err(|e| anyhow!("transport: {e}"))?;
-    let status = resp.status();
-    let text = resp.text().await.map_err(|e| anyhow!("body: {e}"))?;
-    tracing::debug!(method = "GET", url = %url, status = status.as_u16(), body = %text, "HTTP response");
-    if !status.is_success() {
-        return Err(anyhow!("API {} on {}: {}", status.as_u16(), path, text));
-    }
-    serde_json::from_str(&text).map_err(|e| anyhow!("decoding delivery-logs response: {e}"))
 }
 
 #[cfg(test)]
@@ -289,5 +259,10 @@ mod tests {
         // even though we expose `--status failed` for nicer ergonomics.
         let q = build_deliveries_query(None, Some(DeliveryStatusArg::Failed), 1);
         assert_eq!(q, "?pageSize=1&status=Failure");
+
+        // Pending = in-flight retry; goes on the wire as the title-case
+        // status value the server returns.
+        let q = build_deliveries_query(None, Some(DeliveryStatusArg::Pending), 1);
+        assert_eq!(q, "?pageSize=1&status=Pending");
     }
 }

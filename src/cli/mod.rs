@@ -191,4 +191,5 @@ pub enum DeliveriesCommand {
 pub enum DeliveryStatusArg {
     Success,
     Failed,
+    Pending,
 }

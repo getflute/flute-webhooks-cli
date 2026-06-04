@@ -11,6 +11,11 @@ pub enum WebhookEndpointStatus {
 pub enum WebhookDeliveryLogStatus {
     Success,
     Failure,
+    /// In-flight retry that has been scheduled but not yet attempted.
+    /// The server emits this state on newly-queued retries (e.g. right after
+    /// `deliveries retry <id>` returns); it transitions to Success or Failure
+    /// once the next attempt completes.
+    Pending,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -210,6 +215,16 @@ mod tests {
         let v: DeliveryLogSummaryDto = serde_json::from_str(json).unwrap();
         assert_eq!(v.status, WebhookDeliveryLogStatus::Success);
         assert_eq!(v.response_status_code, Some(200));
+    }
+
+    #[test]
+    fn deserializes_delivery_log_summary_with_pending_status() {
+        // Pending shows up on freshly-scheduled retries. Before the variant
+        // was added, this exact payload broke deserialization across the CLI,
+        // TUI poller, and listener — see AGENTS.md "Status enum values".
+        let json = r#"{"deliveryLogId":"00000000-0000-0000-0000-0000000000aa","webhookEndpointId":"00000000-0000-0000-0000-0000000000bb","webhookName":null,"endpointUrl":null,"eventId":"00000000-0000-0000-0000-0000000000cc","eventType":"transaction.card.captured","attemptNumber":2,"deliveryAttemptStatus":"Pending","responseStatusCode":null,"roundTripDurationMs":0,"errorMessage":null,"createdOn":"2026-06-04T12:00:00Z"}"#;
+        let v: DeliveryLogSummaryDto = serde_json::from_str(json).unwrap();
+        assert_eq!(v.status, WebhookDeliveryLogStatus::Pending);
     }
 
     #[test]
