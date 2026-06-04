@@ -455,6 +455,7 @@ pub fn render_details_modal(frame: &mut Frame, app: &App, log_id: &str) {
                 .bg(match d.status {
                     crate::api::models::WebhookDeliveryLogStatus::Success => Color::Green,
                     crate::api::models::WebhookDeliveryLogStatus::Failure => Color::Red,
+                    crate::api::models::WebhookDeliveryLogStatus::Pending => Color::Yellow,
                 })
                 .bold(),
         ),

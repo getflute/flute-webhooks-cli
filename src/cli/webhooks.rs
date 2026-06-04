@@ -232,6 +232,7 @@ fn build_deliveries_query(
         let v = match s {
             DeliveryStatusArg::Success => "Success",
             DeliveryStatusArg::Failed => "Failure",
+            DeliveryStatusArg::Pending => "Pending",
         };
         parts.push(format!("status={v}"));
     }
@@ -289,5 +290,10 @@ mod tests {
         // even though we expose `--status failed` for nicer ergonomics.
         let q = build_deliveries_query(None, Some(DeliveryStatusArg::Failed), 1);
         assert_eq!(q, "?pageSize=1&status=Failure");
+
+        // Pending = in-flight retry; goes on the wire as the title-case
+        // status value the server returns.
+        let q = build_deliveries_query(None, Some(DeliveryStatusArg::Pending), 1);
+        assert_eq!(q, "?pageSize=1&status=Pending");
     }
 }

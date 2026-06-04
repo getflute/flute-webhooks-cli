@@ -211,6 +211,7 @@ pub fn print_delivery_logs(
         let status = match l.status {
             WebhookDeliveryLogStatus::Success => "Success",
             WebhookDeliveryLogStatus::Failure => "Failed",
+            WebhookDeliveryLogStatus::Pending => "Pending",
         };
         let http = l
             .response_status_code

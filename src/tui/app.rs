@@ -213,7 +213,7 @@ pub struct App {
 
     pub filter_endpoint: usize, // 0=All, 1+=index+1
     pub filter_event: usize,
-    pub filter_status: usize, // 0=All, 1=Success, 2=Failure
+    pub filter_status: usize, // 0=All, 1=Success, 2=Failure, 3=Pending
     pub sort_ascending: bool,
 
     pub toast_message: Option<String>,
@@ -585,7 +585,7 @@ impl App {
                 AppAction::None
             }
             KeyCode::Char('3') => {
-                self.filter_status = (self.filter_status + 1) % 3;
+                self.filter_status = (self.filter_status + 1) % 4;
                 self.selected_log = 0;
                 AppAction::None
             }
@@ -721,6 +721,7 @@ impl App {
                 match self.filter_status {
                     1 => log.status == WebhookDeliveryLogStatus::Success,
                     2 => log.status == WebhookDeliveryLogStatus::Failure,
+                    3 => log.status == WebhookDeliveryLogStatus::Pending,
                     _ => true,
                 }
             })
