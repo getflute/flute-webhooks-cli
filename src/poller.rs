@@ -148,7 +148,8 @@ async fn poll_once(api: &ApiClient, event_types: &[EventTypeMeta]) -> Result<Sna
         backoff_eligible: is_backoff_eligible(&e),
         message: format!("endpoints: {e}"),
     })?;
-    let logs_resp = api.list_delivery_logs(500).await.map_err(|e| PollError {
+    // Server caps pageSize at 100; asking for more triggers a 400 validation error.
+    let logs_resp = api.list_delivery_logs(100).await.map_err(|e| PollError {
         backoff_eligible: is_backoff_eligible(&e),
         message: format!("logs: {e}"),
     })?;
