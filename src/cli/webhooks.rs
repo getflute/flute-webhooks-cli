@@ -26,10 +26,7 @@ pub async fn run(api: &ApiClient, fmt: OutputFormat, cmd: WebhooksCommand) -> Re
 async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand) -> Result<()> {
     match cmd {
         EndpointsCommand::List => {
-            let resp = api
-                .list_endpoints()
-                .await
-                .context("list endpoints")?;
+            let resp = api.list_endpoints().await.context("list endpoints")?;
             let data = resp.data.unwrap_or_default();
             output::print_endpoints(&data, fmt)
         }
@@ -51,10 +48,7 @@ async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand
                 endpoint_url: url,
                 event_types: events,
             };
-            let resp = api
-                .create_endpoint(&req)
-                .await
-                .context("create endpoint")?;
+            let resp = api.create_endpoint(&req).await.context("create endpoint")?;
             // Always emit JSON-pretty for create so the user gets the secret —
             // the table form would truncate it. The --output flag chooses
             // between `--output json` (full struct) and `--output table` which
@@ -151,16 +145,18 @@ async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand
 async fn run_event_types(api: &ApiClient, fmt: OutputFormat, cmd: EventTypesCommand) -> Result<()> {
     match cmd {
         EventTypesCommand::List => {
-            let resp = api
-                .list_event_types()
-                .await
-                .context("list event types")?;
-            let metas: Vec<EventTypeMeta> = resp
-                .data
-                .unwrap_or_default()
-                .into_iter()
-                .map(EventTypeMeta::from)
-                .collect();
+            let resp = api.list_event_types().await.context("list event types")?;
+            let dtos = resp.data.unwrap_or_default();
+            // JSON path serializes the wire DTOs directly so consumers see
+            // the same field names (incl. `eventTypeId`) as the underlying
+            // API. The table path uses the trimmed `EventTypeMeta` domain
+            // type which is also what the TUI consumes.
+            if fmt == OutputFormat::Json {
+                let s = serde_json::to_string_pretty(&dtos)?;
+                println!("{s}");
+                return Ok(());
+            }
+            let metas: Vec<EventTypeMeta> = dtos.into_iter().map(EventTypeMeta::from).collect();
             output::print_event_types(&metas, fmt)
         }
     }
@@ -181,12 +177,26 @@ async fn run_deliveries(api: &ApiClient, fmt: OutputFormat, cmd: DeliveriesComma
                 .list_delivery_logs_query(&query)
                 .await
                 .context("list deliveries")?;
-            let logs: Vec<DeliveryLog> = resp
-                .items
-                .unwrap_or_default()
-                .into_iter()
-                .map(DeliveryLog::from)
-                .collect();
+            let items_dto = resp.items.unwrap_or_default();
+            // JSON path serializes the wire DTOs directly so each `items[N]`
+            // uses the same field names (`deliveryLogId`, `deliveryAttemptStatus`,
+            // `roundTripDurationMs`, etc.) as `webhooks deliveries get`. The
+            // table path goes through the trimmed `DeliveryLog` domain type
+            // shared with the TUI.
+            if fmt == OutputFormat::Json {
+                #[derive(serde::Serialize)]
+                struct Wrapper<'a> {
+                    items: &'a [crate::api::models::DeliveryLogSummaryDto],
+                    total: Option<i32>,
+                }
+                let s = serde_json::to_string_pretty(&Wrapper {
+                    items: &items_dto,
+                    total: resp.total,
+                })?;
+                println!("{s}");
+                return Ok(());
+            }
+            let logs: Vec<DeliveryLog> = items_dto.into_iter().map(DeliveryLog::from).collect();
             output::print_delivery_logs(&logs, resp.total, fmt)
         }
         DeliveriesCommand::Get { id } => {
