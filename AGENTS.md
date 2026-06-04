@@ -13,7 +13,7 @@ flute-webhooks-cli auth login                       # interactive prompt — not
 flute-webhooks-cli --output json webhooks endpoints list
 ```
 
-Every non-TUI subcommand accepts `--output json`. On success the response body is pretty-printed JSON on **stdout**. On failure a structured error envelope (see below) is printed to **stdout** and the process exits non-zero — agents parse one stream, never both.
+Every non-TUI subcommand accepts `--output json`. For `webhooks …` subcommands, success emits pretty-printed JSON on **stdout** (per-command shape listed below; `auth token` and `update` are text-only — see the table). On failure a structured error envelope (see below) is printed to **stdout** and the process exits non-zero — agents parse one stream, never both.
 
 ## Output contract
 
@@ -25,7 +25,7 @@ Every non-TUI subcommand accepts `--output json`. On success the response body i
 | `webhooks endpoints get <id>` | `GetWebhookEndpointDto` |
 | `webhooks endpoints create …` | `CreateWebhookEndpointResponse` (includes one-shot `hmacSecret` field — store it; the API never returns it again) |
 | `webhooks endpoints update <id> …` | `GetWebhookEndpointDto` (the merged state after PUT) |
-| `webhooks endpoints delete <id> --yes` | Under `--output json`: empty stdout, exit 0. Under `--output table` (default): human-readable `Deleted endpoint <id>.` line. Agents should always pass `--output json`. |
+| `webhooks endpoints delete <id> --yes` | Under `--output json`: `{"deleted":"<id>"}` on success, exit 0. Under `--output table` (default): human-readable `Deleted endpoint <id>.` line. Agents should always pass `--output json`. |
 | `webhooks endpoints ping <id>` | `PingResponseDto { success, statusCode, roundTripDurationMs, errorMessage? }` |
 | `webhooks event-types list` | Bare JSON array of `{name, description, group}` objects. The wire `eventTypeId` is stripped during conversion — match event types by `name`, not numeric id. |
 | `webhooks deliveries list …` | `{ items: [DeliveryLog…], total }`. Items use the Rust **domain** form (snake_case) — see Casing table. |
@@ -89,7 +89,7 @@ Branch on `kind` first, then `status` for retry/backoff decisions:
 - `"transport"` → connection failure; retry with backoff.
 - `"auth"` → keychain or OAuth handshake failed; needs operator intervention (no credentials configured).
 - `"decode"` → bug in this CLI or a server contract change; surface for investigation.
-- `"client"` → bad CLI args, unknown profile, or **client-side input validation failed** (e.g. non-UUID id passed to `delete`/`get`, non-HTTPS URL passed to `create`, retry against a synthetic delivery). Often a programming error in the agent's invocation, but sometimes a data constraint the operator must reconcile. Inspect `message` for the specific validation that fired.
+- `"client"` → bad CLI args (clap parse failure), unknown profile, or a CLI-side precondition that fired before any HTTP request — currently the only such precondition is `endpoints create` rejecting an empty `--events` list. The CLI does **not** locally validate UUID format, HTTPS URL shape, or "retryable" delivery status — those checks happen server-side and surface as `kind:"api"` with the server's validation `message`. Treat `kind:"client"` as a programming error in the agent's invocation; `kind:"api"` carries the operator-actionable diagnostic.
 
 ## Idempotency
 
@@ -98,11 +98,11 @@ Branch on `kind` first, then `status` for retry/backoff decisions:
 | `endpoints list` / `get` | yes | pure read |
 | `endpoints create` | **no** | duplicates create a second endpoint. Check `list` first if recovering from an ambiguous timeout. |
 | `endpoints update` | yes | full-state PUT — the CLI re-GETs, merges, and re-PUTs every call. |
-| `endpoints delete` | yes | second call returns 404; treat as idempotent success. |
+| `endpoints delete` | yes, with caveat | The first call returns 204 + `{"deleted":"<id>"}`. A second call against the same id surfaces `kind:"api"` `status:404` — the CLI does **not** swallow the 404 into a success. Agents that want at-least-once idempotency should branch: treat `kind:"api"` + `status:404` on a delete as already-gone. |
 | `endpoints ping` | yes | one-shot HTTP test, no side effect on Flute. |
 | `event-types list` | yes | pure read |
 | `deliveries list` / `get` | yes | pure read |
-| `deliveries retry` | **no** | each call schedules an additional retry attempt. Check the latest log via `deliveries get` before retrying again. **Ping-event deliveries are rejected**: the server returns `kind:"client"` + `"Ping deliveries are synthetic and not retryable"`. Filter `event_type != "ping"` before retrying. |
+| `deliveries retry` | **no** | each call schedules an additional retry attempt. Check the latest log via `deliveries get` before retrying again. The server rejects retries against (a) ping-event deliveries with `"Ping deliveries are synthetic and not retryable"` and (b) already-Success deliveries with `"Cannot retry delivery log … — status is Success, only Failure is retryable."` Both surface as `kind:"api"` `status:400`. Filter to `status == Failure` and `event_type != "ping"` before retrying. |
 
 ## Authentication for agents
 
