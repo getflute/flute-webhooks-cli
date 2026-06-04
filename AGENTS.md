@@ -23,12 +23,12 @@ Every non-TUI subcommand accepts `--output json`. On success the response body i
 |---|---|
 | `webhooks endpoints list` | `[GetWebhookEndpointDto, …]` — bare JSON array |
 | `webhooks endpoints get <id>` | `GetWebhookEndpointDto` |
-| `webhooks endpoints create …` | `CreateWebhookEndpointResponse` (includes one-shot `secret` field — store it; the API never returns it again) |
+| `webhooks endpoints create …` | `CreateWebhookEndpointResponse` (includes one-shot `hmacSecret` field — store it; the API never returns it again) |
 | `webhooks endpoints update <id> …` | `GetWebhookEndpointDto` (the merged state after PUT) |
 | `webhooks endpoints delete <id> --yes` | Under `--output json`: empty stdout, exit 0. Under `--output table` (default): human-readable `Deleted endpoint <id>.` line. Agents should always pass `--output json`. |
-| `webhooks endpoints ping <id>` | `PingResponseDto { success, status_code, duration_ms, error_message? }` |
-| `webhooks event-types list` | `[EventTypeDto, …]` — bare JSON array |
-| `webhooks deliveries list …` | `ListDeliveryLogsDto { items, total }` |
+| `webhooks endpoints ping <id>` | `PingResponseDto { success, statusCode, roundTripDurationMs, errorMessage? }` |
+| `webhooks event-types list` | Bare JSON array of `{name, description, group}` objects. The wire `eventTypeId` is stripped during conversion — match event types by `name`, not numeric id. |
+| `webhooks deliveries list …` | `{ items: [DeliveryLog…], total }`. Items use the Rust **domain** form (snake_case) — see Casing table. |
 | `webhooks deliveries get <id>` | `DeliveryLogDetailDto` (full request + response bodies) |
 | `webhooks deliveries retry <id>` | `DeliveryRetryResponseDto { attemptNumber, eventId, eventType, status, webhookEndpointId }` — a distinct shape, not `DeliveryLogSummaryDto`. No `id` field. |
 | `auth token` | bearer JWT as a single line of text — useful for `curl` smoke tests, not JSON |
@@ -42,12 +42,16 @@ The casing is **not uniform across surfaces** — DTOs need to be modeled per re
 
 | Surface | Casing | Example fields |
 |---|---|---|
-| `endpoints` (list / get / create / update) | camelCase | `endpointUrl`, `eventTypes`, `createdOn`, `modifiedOn` |
-| `deliveries list` items (`DeliveryLogSummaryDto`) | snake_case | `endpoint_id`, `event_id`, `event_type`, `attempt_number`, `response_status_code`, `created_on` |
-| `deliveries get` (`DeliveryLogDetailDto`) | camelCase | `webhookEndpointId`, `eventType`, `requestBody`, `responseBody`, `nextRetryAt` |
-| `deliveries retry` (`DeliveryRetryResponseDto`) | camelCase | `attemptNumber`, `eventId`, `eventType`, `webhookEndpointId` |
-| `event-types` list | camelCase-ish (all single-word fields) | `name`, `description`, `group` |
+| `endpoints` (list / get / create / update) | camelCase, namespaced | `endpointId`, `webhookName`, `endpointUrl`, `eventTypes`, `status`, `createdOn`, `modifiedOn` |
+| `endpoints create` response | camelCase | adds `hmacSecret` (one-shot; the API only returns it on the create call) |
+| `deliveries list` items | snake_case (Rust domain form) | `id`, `endpoint_id`, `endpoint_name`, `endpoint_url`, `event_id`, `event_type`, `status`, `attempt_number`, `response_status_code`, `duration_ms`, `error_message`, `created_on` |
+| `deliveries get` (`DeliveryLogDetailDto`) | camelCase, namespaced | `deliveryLogId`, `webhookEndpointId`, `webhookName`, `endpointUrl`, `eventId`, `eventType`, `deliveryAttemptStatus`, `attemptNumber`, `responseStatusCode`, `roundTripDurationMs`, `requestBody`, `responseBody`, `nextRetryAt` |
+| `deliveries retry` (`DeliveryRetryResponseDto`) | camelCase | `attemptNumber`, `eventId`, `eventType`, `status`, `webhookEndpointId` (no `id` field) |
+| `event-types` list | bare lowercase | `name`, `description`, `group` (no id) |
+| `ping` response | camelCase | `success`, `statusCode`, `roundTripDurationMs`, `errorMessage` |
 | Error envelope (any failure) | snake_case | `kind`, `message`, `status`, `correlation_id` |
+
+Two surfaces describe the same logical entity (delivery log) but emit different field names depending on whether you used `list` (domain form, snake_case `id`/`status`/`duration_ms`) or `get` (wire form, camelCase `deliveryLogId`/`deliveryAttemptStatus`/`roundTripDurationMs`). Plan to either branch on the command or unwrap to the wire fields manually. Tracked as a follow-up to unify.
 
 ### Status enum values
 
@@ -56,9 +60,13 @@ Returned values are **title-case** while filter inputs are **lowercase**. Agents
 | Surface | Filter values (CLI input) | Returned values (server) |
 |---|---|---|
 | `endpoints.status` | `active`, `inactive` (via `--status`) | `"Active"`, `"Inactive"` |
-| `deliveries.status` | `success`, `failed` (via `--status`) | `"Success"`, `"Failure"`, `"Pending"` (the latter for newly-scheduled retries) |
+| `deliveries.status` | `success`, `failed`, `pending` (via `--status`) | `"Success"`, `"Failure"`, `"Pending"` (the last for newly-scheduled retries) |
 
-A case-insensitive comparison handles `success ↔ Success` but NOT `failed ↔ Failure` — that pair needs an explicit table.
+A case-insensitive comparison handles `success ↔ Success` and `pending ↔ Pending` but NOT `failed ↔ Failure` — that pair needs an explicit table.
+
+### Pagination cap on `deliveries list`
+
+The Flute server caps `pageSize` at **100**. The CLI accepts `--limit N` up to any value, but anything > 100 returns `{ "kind": "api", "status": 400, "message": "Validation failed: PageSize must be 100 or less." }`. Agents that want more than 100 rows currently need to call `deliveries list` in pages (the CLI does not yet expose pagination cursors — separate follow-up).
 
 ### Failure (under `--output json`)
 

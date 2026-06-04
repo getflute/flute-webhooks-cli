@@ -121,7 +121,7 @@ flute-webhooks-cli webhooks endpoints ping <id>
 flute-webhooks-cli webhooks event-types list
 
 # Delivery logs
-flute-webhooks-cli webhooks deliveries list [--endpoint-id <id>] [--status success|failed] [--limit 50]
+flute-webhooks-cli webhooks deliveries list [--endpoint-id <id>] [--status success|failed|pending] [--limit 50]   # server caps page size at 100
 flute-webhooks-cli webhooks deliveries get <id>
 flute-webhooks-cli webhooks deliveries retry <id>
 
@@ -143,7 +143,7 @@ Global flags (work on every subcommand): `--profile <sandbox|production>`, `--de
 |---|---|
 | **Top level** | `Tab` switch tabs · `q` quit · `Ctrl-C` quit anywhere |
 | **Endpoints tab** | `↑↓`/`jk` navigate · `c` create · `e`/`Enter` edit · `d` delete · `p` ping |
-| **Delivery Logs tab** | `↑↓`/`jk` navigate · `PgUp`/`PgDn`/`Home`/`End` jump · `v`/`Enter` view details · `t` trigger forward · `r` retry (failed deliveries only) · `l` listener config · `1` cycle endpoint filter · `2` cycle event-type filter · `3` cycle status filter · `s` toggle sort · `x` clear filters |
+| **Delivery Logs tab** | `↑↓`/`jk` navigate · `PgUp`/`PgDn`/`Home`/`End` jump · `v`/`Enter` view details · `t` trigger forward · `r` retry (failed deliveries only) · `l` listener config · `1` cycle endpoint filter · `2` cycle event-type filter · `3` cycle status filter (All → Success → Failed → Pending) · `s` toggle sort · `x` clear filters |
 | **Form modal (create/edit)** | `Tab`/`↑↓` move between fields · `←/→` swap Cancel/Submit · `Space`/`Enter` toggle controls · `PgUp`/`PgDn` scroll the event list · `Esc` cancel |
 | **Listener modal** | `Tab`/`↑↓` move between fields · type the URL · `Space` toggle Enabled · `Enter` activate · `Esc` cancel |
 | **Delete confirm** | `y`/`Enter` delete · `n`/`Esc` cancel |
