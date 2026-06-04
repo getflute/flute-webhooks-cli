@@ -341,6 +341,16 @@ impl App {
         if self.selected_endpoint >= self.endpoints.len() && !self.endpoints.is_empty() {
             self.selected_endpoint = self.endpoints.len() - 1;
         }
+        // If the new snapshot shrank the visible log set, clamp selected_log
+        // so the next [v]/[r]/[t] keypress can't index out of bounds. Without
+        // this, a user sitting on row 49 of 100 logs could panic the TUI on
+        // the next poll that returned only 10 rows.
+        let visible_logs = self.filtered_log_indices().len();
+        if visible_logs == 0 {
+            self.selected_log = 0;
+        } else if self.selected_log >= visible_logs {
+            self.selected_log = visible_logs - 1;
+        }
         forwards
     }
 
@@ -1422,6 +1432,40 @@ mod tests {
         let logs = vec![fake_log("a", WebhookDeliveryLogStatus::Success)];
         let actions = app.apply_snapshot(vec![], logs, vec![]);
         assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn apply_snapshot_clamps_selected_log_when_list_shrinks() {
+        // Reproduces the OOB hazard: user is on row 49 of 100 logs; the next
+        // poll returns 10. Without the clamp, the next [v]/[r]/[t] keypress
+        // would index `filtered[49]` against a 10-row vec and panic.
+        let mut app = App::new(None);
+        app.logs = (0..50)
+            .map(|i| fake_log(&format!("log-{i}"), WebhookDeliveryLogStatus::Success))
+            .collect();
+        app.selected_log = 49;
+
+        let shrunk: Vec<_> = (0..10)
+            .map(|i| fake_log(&format!("log-{i}"), WebhookDeliveryLogStatus::Success))
+            .collect();
+        app.apply_snapshot(vec![], shrunk, vec![]);
+
+        assert!(
+            app.selected_log < app.filtered_log_indices().len(),
+            "selected_log {} must be < filtered len {}",
+            app.selected_log,
+            app.filtered_log_indices().len()
+        );
+    }
+
+    #[test]
+    fn apply_snapshot_resets_selected_log_when_list_empties() {
+        let mut app = App::new(None);
+        app.logs = vec![fake_log("only", WebhookDeliveryLogStatus::Success)];
+        app.selected_log = 0;
+        app.apply_snapshot(vec![], vec![], vec![]);
+        assert_eq!(app.selected_log, 0);
+        assert!(app.filtered_log_indices().is_empty());
     }
 
     #[test]
