@@ -27,8 +27,8 @@ Every non-TUI subcommand accepts `--output json`. For `webhooks …` subcommands
 | `webhooks endpoints update <id> …` | `GetWebhookEndpointDto` (the merged state after PUT) |
 | `webhooks endpoints delete <id> --yes` | Under `--output json`: `{"deleted":"<id>"}` on success, exit 0. Under `--output table` (default): human-readable `Deleted endpoint <id>.` line. Agents should always pass `--output json`. |
 | `webhooks endpoints ping <id>` | `PingResponseDto { success, statusCode, roundTripDurationMs, errorMessage? }` |
-| `webhooks event-types list` | Bare JSON array of `{name, description, group}` objects. The wire `eventTypeId` is stripped during conversion — match event types by `name`, not numeric id. |
-| `webhooks deliveries list …` | `{ items: [DeliveryLog…], total }`. Items use the Rust **domain** form (snake_case) — see Casing table. |
+| `webhooks event-types list` | Bare JSON array of `EventTypeDto` objects: `{eventTypeId, name, description, group}`. (Before v0.5.6 `eventTypeId` was stripped — match by `name` only on older CLIs.) |
+| `webhooks deliveries list …` | `{ items: [DeliveryLogSummaryDto…], total }`. Items use the same wire field names as `deliveries get` — agents can reuse field paths between the two calls. (Before v0.5.6 the items were domain-form snake_case.) |
 | `webhooks deliveries get <id>` | `DeliveryLogDetailDto` (full request + response bodies) |
 | `webhooks deliveries retry <id>` | `DeliveryRetryResponseDto { attemptNumber, eventId, eventType, status, webhookEndpointId }` — a distinct shape, not `DeliveryLogSummaryDto`. No `id` field. |
 | `auth token` | bearer JWT as a single line of text — useful for `curl` smoke tests, not JSON |
@@ -44,14 +44,14 @@ The casing is **not uniform across surfaces** — DTOs need to be modeled per re
 |---|---|---|
 | `endpoints` (list / get / create / update) | camelCase, namespaced | `endpointId`, `webhookName`, `endpointUrl`, `eventTypes`, `status`, `createdOn`, `modifiedOn` |
 | `endpoints create` response | camelCase | adds `hmacSecret` (one-shot; the API only returns it on the create call) |
-| `deliveries list` items | snake_case (Rust domain form) | `id`, `endpoint_id`, `endpoint_name`, `endpoint_url`, `event_id`, `event_type`, `status`, `attempt_number`, `response_status_code`, `duration_ms`, `error_message`, `created_on` |
-| `deliveries get` (`DeliveryLogDetailDto`) | camelCase, namespaced | `deliveryLogId`, `webhookEndpointId`, `webhookName`, `endpointUrl`, `eventId`, `eventType`, `deliveryAttemptStatus`, `attemptNumber`, `responseStatusCode`, `roundTripDurationMs`, `requestBody`, `responseBody`, `nextRetryAt` |
+| `deliveries list` items (`DeliveryLogSummaryDto`) | camelCase, namespaced (matches `get`) | `deliveryLogId`, `webhookEndpointId`, `webhookName`, `endpointUrl`, `eventId`, `eventType`, `deliveryAttemptStatus`, `attemptNumber`, `responseStatusCode`, `roundTripDurationMs`, `errorMessage`, `createdOn` |
+| `deliveries get` (`DeliveryLogDetailDto`) | camelCase, namespaced | superset of the summary: adds `requestHeaders`, `requestBody`, `responseHeaders`, `responseBody`, `nextRetryAt` |
 | `deliveries retry` (`DeliveryRetryResponseDto`) | camelCase | `attemptNumber`, `eventId`, `eventType`, `status`, `webhookEndpointId` (no `id` field) |
-| `event-types` list | bare lowercase | `name`, `description`, `group` (no id) |
+| `event-types` list (`EventTypeDto`) | camelCase | `eventTypeId`, `name`, `description`, `group` |
 | `ping` response | camelCase | `success`, `statusCode`, `roundTripDurationMs`, `errorMessage` |
 | Error envelope (any failure) | snake_case | `kind`, `message`, `status`, `correlation_id` |
 
-Two surfaces describe the same logical entity (delivery log) but emit different field names depending on whether you used `list` (domain form, snake_case `id`/`status`/`duration_ms`) or `get` (wire form, camelCase `deliveryLogId`/`deliveryAttemptStatus`/`roundTripDurationMs`). Plan to either branch on the command or unwrap to the wire fields manually. Tracked as a follow-up to unify.
+As of v0.5.6, `deliveries list` items and `deliveries get` use the same field names. Agents can call `list` then `get(item.deliveryLogId)` and reuse field paths across both responses. (Pre-v0.5.6 the list items emitted snake_case `id`/`status`/`duration_ms` — see the v0.5.6 release notes if you need to support older CLIs.)
 
 ### Status enum values
 

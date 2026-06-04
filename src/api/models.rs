@@ -235,4 +235,72 @@ mod tests {
         assert_eq!(v.items.unwrap().len(), 1);
         assert_eq!(v.total, Some(4242));
     }
+
+    #[test]
+    fn delivery_log_summary_and_detail_agree_on_field_names() {
+        // Regression for the "list and get use different schemas" bug
+        // (proposal.md, fixed in v0.5.6). Every key on the summary DTO
+        // must exist on the detail DTO with the same name — otherwise
+        // consumers can't reuse field paths across `list` and `get`.
+        let summary = DeliveryLogSummaryDto {
+            id: "x".into(),
+            webhook_endpoint_id: "y".into(),
+            webhook_name: None,
+            endpoint_url: None,
+            event_id: "z".into(),
+            event_type: None,
+            attempt_number: 1,
+            status: WebhookDeliveryLogStatus::Success,
+            response_status_code: None,
+            duration_ms: 0,
+            error_message: None,
+            created_on: chrono::Utc::now(),
+        };
+        let detail = DeliveryLogDetailDto {
+            id: "x".into(),
+            webhook_endpoint_id: "y".into(),
+            webhook_name: None,
+            endpoint_url: None,
+            event_id: "z".into(),
+            event_type: None,
+            attempt_number: 1,
+            status: WebhookDeliveryLogStatus::Success,
+            response_status_code: None,
+            duration_ms: 0,
+            error_message: None,
+            created_on: chrono::Utc::now(),
+            request_headers: None,
+            request_body: None,
+            response_headers: None,
+            response_body: None,
+            next_retry_at: None,
+        };
+        let sj = serde_json::to_value(&summary).unwrap();
+        let dj = serde_json::to_value(&detail).unwrap();
+        let sk: std::collections::BTreeSet<&str> =
+            sj.as_object().unwrap().keys().map(|s| s.as_str()).collect();
+        let dk: std::collections::BTreeSet<&str> =
+            dj.as_object().unwrap().keys().map(|s| s.as_str()).collect();
+        // Summary keys must be a subset of detail keys (detail is strictly
+        // wider — it adds the request/response bodies + next_retry_at).
+        let missing: Vec<&&str> = sk.difference(&dk).collect();
+        assert!(
+            missing.is_empty(),
+            "summary keys not present on detail: {missing:?}",
+        );
+        // Spot-check that the renamed fields use the namespaced names on
+        // BOTH sides — i.e. neither leaks the bare Rust identifier.
+        for k in [
+            "deliveryLogId",
+            "deliveryAttemptStatus",
+            "roundTripDurationMs",
+        ] {
+            assert!(sk.contains(k), "summary missing wire key {k}");
+            assert!(dk.contains(k), "detail missing wire key {k}");
+        }
+        for k in ["id", "status", "duration_ms"] {
+            assert!(!sk.contains(k), "summary leaked raw Rust key {k}");
+            assert!(!dk.contains(k), "detail leaked raw Rust key {k}");
+        }
+    }
 }
