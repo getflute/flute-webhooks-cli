@@ -69,8 +69,20 @@ pub async fn check_for_update() -> Option<String> {
     latest.filter(|v| is_newer_than_current(v))
 }
 
+/// Returns true only if `v` is *strictly newer* than the compiled binary
+/// version, compared as semver. A bare string `!=` check would (incorrectly)
+/// say "update available" when a stale cache held an older version than the
+/// running binary — e.g. cache "0.5.3" after the user upgraded to 0.5.4.
+/// If either side fails to parse as semver, fall back to false so a parse
+/// glitch can't trigger a spurious update prompt.
 fn is_newer_than_current(v: &str) -> bool {
-    v != env!("CARGO_PKG_VERSION")
+    let Ok(current) = env!("CARGO_PKG_VERSION").parse::<axoupdater::Version>() else {
+        return false;
+    };
+    let Ok(candidate) = v.parse::<axoupdater::Version>() else {
+        return false;
+    };
+    candidate > current
 }
 
 fn now_unix() -> u64 {
@@ -136,10 +148,26 @@ mod tests {
     }
 
     #[test]
-    fn anything_other_than_current_counts_as_newer() {
-        // is_newer_than_current is a simple string compare; semver ordering
-        // is the GitHub API's job, not ours.
+    fn strictly_newer_semver_counts_as_newer() {
         assert!(is_newer_than_current("999.999.999"));
+    }
+
+    #[test]
+    fn strictly_older_semver_is_not_newer() {
+        // Regression for the "stale cache shows update available" bug:
+        // when the user upgraded to 0.5.4 but the cache still held
+        // latest_version="0.5.3" (written before the v0.5.4 tag landed
+        // on GitHub Releases), the old string-`!=` check incorrectly
+        // surfaced a notice. Semver `>` correctly returns false.
+        assert!(!is_newer_than_current("0.0.0"));
+    }
+
+    #[test]
+    fn unparseable_candidate_returns_false() {
+        // If the GitHub API ever returns something we can't parse as
+        // semver, prefer no notice over a spurious one.
+        assert!(!is_newer_than_current("not-a-version"));
+        assert!(!is_newer_than_current(""));
     }
 
     #[test]

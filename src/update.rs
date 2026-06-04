@@ -30,12 +30,19 @@ pub const REPO_NAME: &str = "flute-webhooks-cli";
 /// (especially the silent startup check) don't break the foreground command.
 pub async fn query_latest_silently() -> Option<String> {
     let (mut updater, _) = make_updater();
-    let v = updater.query_new_version().await.ok().flatten()?;
-    let v = v.to_string();
-    if v == env!("CARGO_PKG_VERSION") {
-        None
+    let latest = updater.query_new_version().await.ok().flatten()?;
+    // Only report when GitHub's latest is *strictly newer* than the compiled
+    // binary, compared as semver. Equal-or-older means "no update available"
+    // — the latter case fires when this binary was built from source after
+    // a tag was pushed but before the binary tag's been picked up, or when
+    // a stale cache holds an older version.
+    let current = env!("CARGO_PKG_VERSION")
+        .parse::<axoupdater::Version>()
+        .ok()?;
+    if *latest > current {
+        Some(latest.to_string())
     } else {
-        Some(v)
+        None
     }
 }
 
