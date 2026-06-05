@@ -1,4 +1,4 @@
-# AGENTS.md — running `flute-webhooks-cli` from an AI agent
+# AGENTS.md — running `flute-webhooks` from an AI agent
 
 This file documents the machine-readable contract for autonomous agents (Claude Code, GPT function-calling subprocesses, Cursor, custom orchestrators). Humans should read `readme.md` instead.
 
@@ -6,11 +6,11 @@ This file documents the machine-readable contract for autonomous agents (Claude 
 
 ```bash
 # Auth (one-time, before any other command)
-FLUTE_CLIENT_ID=… FLUTE_CLIENT_SECRET=… flute-webhooks-cli --output json webhooks endpoints list
+FLUTE_CLIENT_ID=… FLUTE_CLIENT_SECRET=… flute-webhooks --output json webhooks endpoints list
 
 # Or persist credentials in the OS keychain once, then drop the env vars:
-flute-webhooks-cli auth login                       # interactive prompt — not agent-friendly
-flute-webhooks-cli --output json webhooks endpoints list
+flute-webhooks auth login                       # interactive prompt — not agent-friendly
+flute-webhooks --output json webhooks endpoints list
 ```
 
 Every non-TUI subcommand accepts `--output json`. For `webhooks …` subcommands, success emits pretty-printed JSON on **stdout** (per-command shape listed below; `auth token` and `update` are text-only — see the table). On failure a structured error envelope (see below) is printed to **stdout** and the process exits non-zero — agents parse one stream, never both.
@@ -112,7 +112,7 @@ The agent-friendly path bypasses the OS keychain entirely via env vars:
 FLUTE_PROFILE=sandbox \
 FLUTE_CLIENT_ID=… \
 FLUTE_CLIENT_SECRET=… \
-flute-webhooks-cli --output json webhooks endpoints list
+flute-webhooks --output json webhooks endpoints list
 ```
 
 These env vars are checked by `auth::keychain::load_with_env_fallback` before the keychain. They're the recommended path for any non-interactive caller (CI, agent runtime, container). The keychain path requires an interactive `auth login` first and depends on platform-specific session state — fragile for agents.
@@ -142,7 +142,7 @@ A bearer token is fetched automatically from `oauth_url` on demand, cached for t
 
 ## Things to avoid
 
-- **Don't invoke the TUI from an agent.** `flute-webhooks-cli tui` enters an alternate-screen ratatui loop with no JSON surface.
+- **Don't invoke the TUI from an agent.** `flute-webhooks tui` enters an alternate-screen ratatui loop with no JSON surface.
 - **Don't combine `--output json` with `auth login` or `listen`.** Those are interactive/long-running and don't emit JSON.
 - **Don't rely on stderr.** The structured error envelope is on stdout. Stderr may contain tracing output, update notices, or anyhow debug formatting depending on flags.
 - **Don't poll faster than 5 s.** The configured floor and adaptive backoff exist for a reason; agent loops should respect `poll_interval_seconds` in `~/.flute/config.toml` (default 5).

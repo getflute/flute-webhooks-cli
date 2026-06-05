@@ -2,7 +2,7 @@
 
 A Rust CLI **and** terminal UI for working with Flute webhooks: manage endpoints, watch delivery logs in real time, retry failures, and forward incoming successful events to a local listener URL. Built with [ratatui](https://ratatui.rs), [reqwest](https://docs.rs/reqwest), [clap](https://docs.rs/clap), and tokio.
 
-![status](https://img.shields.io/badge/status-v0.5.6-blue)
+![status](https://img.shields.io/badge/status-v0.6.0-blue)
 [![release](https://github.com/getflute/flute-webhooks-cli/actions/workflows/release.yml/badge.svg)](https://github.com/getflute/flute-webhooks-cli/actions/workflows/release.yml)
 
 ## What it does
@@ -10,11 +10,11 @@ A Rust CLI **and** terminal UI for working with Flute webhooks: manage endpoints
 - **Manage endpoints** — create, edit, delete, and ping webhook endpoints from the keyboard or scriptable CLI.
 - **Watch deliveries** — poll the live API in the background, stream delivery logs into a filterable table, and view full request/response bodies on demand.
 - **Retry failed deliveries** — single-shot from the TUI (`r` key) or CLI (`webhooks deliveries retry <id>`).
-- **Local listener** — forward every NEW successful delivery to `http://127.0.0.1:port/...` in TUI mode (toggleable modal) or as a long-running CLI command (`flute-webhooks-cli listen --forward-to ...`).
+- **Local listener** — forward every NEW successful delivery to `http://127.0.0.1:port/...` in TUI mode (toggleable modal) or as a long-running CLI command (`flute-webhooks listen --forward-to ...`).
 - **Adaptive polling** — 5 s default, configurable 5–60 s, backs off to 20 s during form input, exponential 30-second cap on consecutive failures.
 - **Resilient auth** — bearer tokens cached + proactively refreshed 60 s before expiry; reactive retry once on a 401.
 - **Errors with correlation IDs** — failed API calls show a sticky red modal with the server's `Title`, `Details`, `ExceptionType`, and correlation ID until you dismiss it.
-- **`--debug` for HTTP traces** — every request + response (status, URL, body) at debug level, to stdout (CLI) or `~/.flute/flute-webhooks-cli.log` (TUI).
+- **`--debug` for HTTP traces** — every request + response (status, URL, body) at debug level, to stdout (CLI) or `~/.flute/flute-webhooks.log` (TUI).
 - **Agent-friendly** — every non-TUI subcommand supports `--output json`, including a structured error envelope (`{kind, message, status?, correlation_id?}`) printed to stdout on failure. See [AGENTS.md](AGENTS.md) for the full machine-readable contract.
 
 ## Coverage: TUI ↔ CLI
@@ -33,15 +33,15 @@ Every documented Webhook API call is reachable from both modes:
 | List delivery logs          | Delivery Logs tab                    | `webhooks deliveries list`                           |
 | Get delivery log detail     | `v`/`Enter` → details modal          | `webhooks deliveries get <id>`                       |
 | Retry failed delivery       | `r` on a failed row                  | `webhooks deliveries retry <id>`                     |
-| Listen + forward locally    | `l` → listener modal                 | `flute-webhooks-cli listen --forward-to <url>`       |
+| Listen + forward locally    | `l` → listener modal                 | `flute-webhooks listen --forward-to <url>`       |
 | Manual one-shot forward     | `t` on a successful row              | (`listen` covers it; manual one-shot deferred)       |
-| Self-update                 | modal on startup; dismissable        | `flute-webhooks-cli update`                          |
+| Self-update                 | modal on startup; dismissable        | `flute-webhooks update`                          |
 
 `--output json` works on every CLI subcommand, producing pretty-printed JSON for piping into `jq`.
 
 ## Install
 
-Pick whichever installer matches your platform — each one drops a `flute-webhooks-cli` binary on your `PATH` plus an install receipt that the in-app `update` command reads when checking for new versions.
+Pick whichever installer matches your platform — each one drops a `flute-webhooks` binary on your `PATH` plus an install receipt that the in-app `update` command reads when checking for new versions.
 
 ```bash
 # macOS / Linux (curl + sh)
@@ -62,17 +62,17 @@ Installers, archives, and SHA-256 sums are produced by [`cargo-dist`](https://op
 git clone https://github.com/getflute/flute-webhooks-cli.git
 cd flute-webhooks-cli
 cargo build --release
-# Binary lands at target/release/flute-webhooks-cli
+# Binary lands at target/release/flute-webhooks
 ```
 
-For development, `cargo build` (debug profile) is faster and works the same way. Source-built binaries do not carry an install receipt, so `flute-webhooks-cli update` cannot self-replace them — it will check for a newer version and tell you to reinstall via one of the installers above.
+For development, `cargo build` (debug profile) is faster and works the same way. Source-built binaries do not carry an install receipt, so `flute-webhooks update` cannot self-replace them — it will check for a newer version and tell you to reinstall via one of the installers above.
 
 ## First run
 
 ### 1. Authenticate
 
 ```bash
-flute-webhooks-cli auth login
+flute-webhooks auth login
 # (or: cargo run -- auth login)
 ```
 
@@ -81,13 +81,13 @@ You'll be prompted for `client_id` and `client_secret`. The secret prompt is hid
 By default this stores credentials for the **sandbox** profile. To set up production:
 
 ```bash
-flute-webhooks-cli --profile production auth login
+flute-webhooks --profile production auth login
 ```
 
 ### 2. Verify
 
 ```bash
-flute-webhooks-cli auth token
+flute-webhooks auth token
 ```
 
 Prints the current bearer JWT (useful for `curl` smoke tests).
@@ -96,43 +96,43 @@ Prints the current bearer JWT (useful for `curl` smoke tests).
 
 **Interactive (TUI):**
 ```bash
-flute-webhooks-cli tui
+flute-webhooks tui
 ```
-`flute-webhooks-cli` with no subcommand prints help — it does not launch the TUI silently.
+`flute-webhooks` with no subcommand prints help — it does not launch the TUI silently.
 
 **Scriptable (CLI):**
 ```bash
-flute-webhooks-cli webhooks endpoints list
-flute-webhooks-cli --output json webhooks deliveries list --limit 5 | jq .
+flute-webhooks webhooks endpoints list
+flute-webhooks --output json webhooks deliveries list --limit 5 | jq .
 ```
 
 ## CLI reference
 
 ```bash
 # Endpoints
-flute-webhooks-cli webhooks endpoints list
-flute-webhooks-cli webhooks endpoints get <id>
-flute-webhooks-cli webhooks endpoints create --url https://… --events transaction.card.captured,refund.completed [--name "My Hook"]
-flute-webhooks-cli webhooks endpoints update <id> [--url …] [--events …] [--name …] [--status active|inactive]
-flute-webhooks-cli webhooks endpoints delete <id> --yes
-flute-webhooks-cli webhooks endpoints ping <id>
+flute-webhooks webhooks endpoints list
+flute-webhooks webhooks endpoints get <id>
+flute-webhooks webhooks endpoints create --url https://… --events transaction.card.captured,refund.completed [--name "My Hook"]
+flute-webhooks webhooks endpoints update <id> [--url …] [--events …] [--name …] [--status active|inactive]
+flute-webhooks webhooks endpoints delete <id> --yes
+flute-webhooks webhooks endpoints ping <id>
 
 # Event-types catalog
-flute-webhooks-cli webhooks event-types list
+flute-webhooks webhooks event-types list
 
 # Delivery logs
-flute-webhooks-cli webhooks deliveries list [--endpoint-id <id>] [--status success|failed|pending] [--limit 50]   # server caps page size at 100
-flute-webhooks-cli webhooks deliveries get <id>
-flute-webhooks-cli webhooks deliveries retry <id>
+flute-webhooks webhooks deliveries list [--endpoint-id <id>] [--status success|failed|pending] [--limit 50]   # server caps page size at 100
+flute-webhooks webhooks deliveries get <id>
+flute-webhooks webhooks deliveries retry <id>
 
 # Headless listener — POSTs every NEW successful delivery's headers + body
 # to a local URL. Runs in the foreground until Ctrl-C.
-flute-webhooks-cli listen --forward-to http://127.0.0.1:3000/webhook
+flute-webhooks listen --forward-to http://127.0.0.1:3000/webhook
 
 # Check GitHub Releases and self-update in place (only works when installed
 # via one of the cargo-dist installers above; from-source builds get an
 # informational message pointing at the installers).
-flute-webhooks-cli update
+flute-webhooks update
 ```
 
 Global flags (work on every subcommand): `--profile <sandbox|production>`, `--debug`, `--output table|json`.
@@ -179,25 +179,25 @@ If `poll_interval_seconds` is outside `5..=60`, the TUI shows a yellow warning i
 
 ### Updating
 
-On every run, `flute-webhooks-cli` checks GitHub Releases at most once per 24 hours (cached at `~/.flute/update-check.json`) and surfaces a non-blocking notice if a newer version is available:
+On every run, `flute-webhooks` checks GitHub Releases at most once per 24 hours (cached at `~/.flute/update-check.json`) and surfaces a non-blocking notice if a newer version is available:
 
 - **CLI**: a one-line `eprintln!` after the command finishes, so stdout (including `--output json`) stays clean.
 - **TUI**: a dismissable green modal on the first frame; Enter or Esc dismisses it.
 
 The check is skipped entirely when any of the following apply: the subcommand is `update` or `auth`, `auto_update_check = false`, `FLUTE_NO_UPDATE_CHECK` is set, `CI` is set, or stderr isn't a TTY (piped output).
 
-When a newer version exists, run `flute-webhooks-cli update` to install it. Binaries installed via one of the cargo-dist installers (curl, brew, irm) carry an install receipt and can self-replace in place. Source-built binaries (`cargo install`, `cargo build --release`) instead receive a printed instruction to reinstall via an installer.
+When a newer version exists, run `flute-webhooks update` to install it. Binaries installed via one of the cargo-dist installers (curl, brew, irm) carry an install receipt and can self-replace in place. Source-built binaries (`cargo install`, `cargo build --release`) instead receive a printed instruction to reinstall via an installer.
 
 ### Debugging HTTP traffic
 
 Pass `--debug` to log every HTTP request and response (status, URL, body) at debug level:
 
 ```bash
-flute-webhooks-cli --debug auth token        # traces print to STDOUT
-flute-webhooks-cli --debug tui               # TUI: traces go to ~/.flute/flute-webhooks-cli.log
+flute-webhooks --debug auth token        # traces print to STDOUT
+flute-webhooks --debug tui               # TUI: traces go to ~/.flute/flute-webhooks.log
 ```
 
-For non-TUI commands, traces print to **stdout** so you can pipe them through `jq` / `grep`. For the TUI, stdout is owned by ratatui, so traces are appended to `~/.flute/flute-webhooks-cli.log` instead — open a second terminal and `tail -f ~/.flute/flute-webhooks-cli.log` to watch live. Response bodies are logged in full (no truncation) so server stack traces are captured intact; the bearer token is never logged.
+For non-TUI commands, traces print to **stdout** so you can pipe them through `jq` / `grep`. For the TUI, stdout is owned by ratatui, so traces are appended to `~/.flute/flute-webhooks.log` instead — open a second terminal and `tail -f ~/.flute/flute-webhooks.log` to watch live. Response bodies are logged in full (no truncation) so server stack traces are captured intact; the bearer token is never logged.
 
 Without `--debug`, default tracing is INFO/WARN — non-TUI commands write to stderr, the TUI writes to the log file.
 
@@ -266,9 +266,9 @@ The workflow only fires on tags matching `v*` (plus manual `workflow_dispatch` f
 
 ## Troubleshooting
 
-**`no credentials for [sandbox]`** — run `flute-webhooks-cli auth login`.
+**`no credentials for [sandbox]`** — run `flute-webhooks auth login`.
 
-**`unknown profile: uat`** — the `uat` profile was renamed to `sandbox` in v0.5.0. Run `flute-webhooks-cli auth login` to register credentials under the new name (your old `uat` keychain entry stays orphaned until manually removed), and update any `FLUTE_PROFILE=uat` env vars or `default_profile = "uat"` config entries to `sandbox`.
+**`unknown profile: uat`** — the `uat` profile was renamed to `sandbox` in v0.5.0. Run `flute-webhooks auth login` to register credentials under the new name (your old `uat` keychain entry stays orphaned until manually removed), and update any `FLUTE_PROFILE=uat` env vars or `default_profile = "uat"` config entries to `sandbox`.
 
 **Terminal looks broken after a crash** — the panic hook should restore it automatically; if it didn't, run `reset` or `stty sane`.
 

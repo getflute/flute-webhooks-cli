@@ -1,6 +1,6 @@
-//! Clap argument tree for the `flute-webhooks-cli` binary.
+//! Clap argument tree for the `flute-webhooks` binary.
 //!
-//! The web of subcommands matches the `flute-webhooks-cli webhooks …` shape from
+//! The web of subcommands matches the `flute-webhooks webhooks …` shape from
 //! the FEATURE-FLUTE-CLI spec § 6 — endpoints CRUD + ping, event-types,
 //! delivery logs CRUD + retry. Output formatting and dispatch live in the
 //! sibling modules: `output` and `webhooks`.
@@ -12,7 +12,7 @@ pub mod webhooks;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "flute-webhooks-cli",
+    name = "flute-webhooks",
     version,
     about = "Flute Webhooks TUI and helpers"
 )]
@@ -22,7 +22,7 @@ pub struct Cli {
 
     /// Print every HTTP request and response (status, URL, body) at debug
     /// level. Output goes to stdout for non-TUI commands and to
-    /// ~/.flute/flute-webhooks-cli.log for the TUI (which owns stdout).
+    /// ~/.flute/flute-webhooks.log for the TUI (which owns stdout).
     #[arg(long, global = true)]
     pub debug: bool,
 

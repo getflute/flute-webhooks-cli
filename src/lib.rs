@@ -20,7 +20,7 @@ pub fn run() -> anyhow::Result<()> {
     let output_fmt = cli.output;
 
     // No subcommand: print help and exit. Previously defaulted to launching the
-    // TUI, which surprised users who ran `flute-webhooks-cli --debug` expecting to
+    // TUI, which surprised users who ran `flute-webhooks --debug` expecting to
     // be told what to do.
     let Some(cmd) = cli.command else {
         cli::Cli::command().print_help()?;
@@ -34,7 +34,7 @@ pub fn run() -> anyhow::Result<()> {
     // CLI command also gets credit for "fresh log on next TUI launch".
     // Best-effort: ignore the error if the file doesn't exist or the
     // delete races with another process.
-    let _ = std::fs::remove_file(config::config_dir().join("flute-webhooks-cli.log"));
+    let _ = std::fs::remove_file(config::config_dir().join("flute-webhooks.log"));
 
     init_tracing(is_tui, debug);
 
@@ -124,7 +124,7 @@ async fn run_webhooks(
     let p = config::Profile::by_name(profile)
         .ok_or_else(|| anyhow::anyhow!("unknown profile: {profile}"))?;
     let (id, secret) = auth::keychain::load_with_env_fallback(profile)?.ok_or_else(|| {
-        anyhow::anyhow!("no credentials for [{profile}]; run `flute-webhooks-cli auth login`")
+        anyhow::anyhow!("no credentials for [{profile}]; run `flute-webhooks auth login`")
     })?;
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
@@ -158,7 +158,7 @@ async fn listen(profile: &str, forward_to: &str) -> anyhow::Result<()> {
     let secs = config::validate_poll_interval(cfg.poll_interval_seconds).seconds;
 
     let (id, secret) = auth::keychain::load_with_env_fallback(profile)?.ok_or_else(|| {
-        anyhow::anyhow!("no credentials for [{profile}]; run `flute-webhooks-cli auth login`")
+        anyhow::anyhow!("no credentials for [{profile}]; run `flute-webhooks auth login`")
     })?;
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
@@ -175,7 +175,7 @@ async fn listen(profile: &str, forward_to: &str) -> anyhow::Result<()> {
         tokens: auth::token::TokenStore::new(fetcher),
     };
 
-    println!("flute-webhooks-cli listen — profile=[{profile}] forwarding to {forward_to}");
+    println!("flute-webhooks listen — profile=[{profile}] forwarding to {forward_to}");
     println!("Ctrl-C to stop.");
 
     // Prime seen_log_ids with the first page of currently-known logs so we
@@ -226,8 +226,8 @@ async fn listen(profile: &str, forward_to: &str) -> anyhow::Result<()> {
 }
 
 /// Route tracing output based on (is_tui, debug):
-///   tui + debug      -> ~/.flute/flute-webhooks-cli.log at DEBUG (stdout owned by ratatui)
-///   tui + no debug   -> ~/.flute/flute-webhooks-cli.log at INFO/WARN
+///   tui + debug      -> ~/.flute/flute-webhooks.log at DEBUG (stdout owned by ratatui)
+///   tui + no debug   -> ~/.flute/flute-webhooks.log at INFO/WARN
 ///   non-tui + debug  -> stdout at DEBUG (per --debug spec: "outputs every HTTP call to stdout")
 ///   non-tui + normal -> stderr at INFO/WARN
 ///
@@ -243,7 +243,7 @@ fn init_tracing(is_tui: bool, debug: bool) {
 
     if is_tui {
         let _ = std::fs::create_dir_all(config::config_dir());
-        let log_path = config::config_dir().join("flute-webhooks-cli.log");
+        let log_path = config::config_dir().join("flute-webhooks.log");
         match std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -307,7 +307,7 @@ async fn auth_print_token(profile: &str) -> anyhow::Result<()> {
     let p = config::Profile::by_name(profile)
         .ok_or_else(|| anyhow::anyhow!("unknown profile: {profile}"))?;
     let (id, secret) = auth::keychain::load_with_env_fallback(profile)?.ok_or_else(|| {
-        anyhow::anyhow!("no credentials for [{profile}]; run `flute-webhooks-cli auth login`")
+        anyhow::anyhow!("no credentials for [{profile}]; run `flute-webhooks auth login`")
     })?;
     let fetcher = std::sync::Arc::new(auth::token::OAuth2Fetcher {
         oauth_url: p.oauth_url,

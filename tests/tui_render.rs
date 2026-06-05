@@ -86,7 +86,7 @@ fn update_notice_renders_dismissable_modal_overlay() {
     );
     assert!(text.contains("9.9.9"), "modal should embed the version");
     assert!(
-        text.contains("flute-webhooks-cli update"),
+        text.contains("flute-webhooks update"),
         "modal should tell the user how to install"
     );
     assert!(

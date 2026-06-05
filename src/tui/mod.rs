@@ -31,7 +31,7 @@ pub async fn run(profile_name: &str, update_notice: Option<String>) -> anyhow::R
     let validated = validate_poll_interval(cfg.poll_interval_seconds);
 
     let (id, secret) = keychain::load_with_env_fallback(profile_name)?.ok_or_else(|| {
-        anyhow!("no credentials for [{profile_name}]; run `flute-webhooks-cli auth login`")
+        anyhow!("no credentials for [{profile_name}]; run `flute-webhooks auth login`")
     })?;
 
     let http = reqwest::Client::builder()
