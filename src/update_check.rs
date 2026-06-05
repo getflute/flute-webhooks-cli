@@ -125,7 +125,7 @@ fn write_cache_at(path: &std::path::Path, c: &Cache) -> std::io::Result<()> {
 /// modal and the CLI banner stay in sync.
 pub fn notice_for(version: &str) -> String {
     format!(
-        "A newer version ({version}) of flute-webhooks-cli is available — run `flute-webhooks-cli update` to install."
+        "A newer version ({version}) of flute-webhooks-cli is available — run `flute-webhooks update` to install."
     )
 }
 
@@ -175,7 +175,7 @@ mod tests {
         let n = notice_for("9.9.9");
         assert!(n.contains("9.9.9"), "notice should embed the version: {n}");
         assert!(
-            n.contains("flute-webhooks-cli update"),
+            n.contains("flute-webhooks update"),
             "notice should tell the user how to update: {n}"
         );
     }

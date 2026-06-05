@@ -404,7 +404,7 @@ pub fn render_update_modal(frame: &mut Frame, version: &str) {
         )),
         Line::raw(""),
         Line::from(Span::styled(
-            "Run `flute-webhooks-cli update` from the command line to install it.",
+            "Run `flute-webhooks update` from the command line to install it.",
             Style::default().fg(Color::White),
         )),
         Line::raw(""),
