@@ -205,7 +205,7 @@ Without `--debug`, default tracing is INFO/WARN — non-TUI commands write to st
 
 | Profile | API base | OAuth URL |
 |---|---|---|
-| `sandbox` (default) | `https://sandbox.api.uat.flute.com` | `https://sandbox.oauth.api.uat.flute.com/oauth2/token` |
+| `sandbox` (default) | `https://sandbox.api.flute.com` | `https://sandbox.oauth.api.flute.com/oauth2/token` |
 | `production` (alias `prod`) | `https://api.flute.com` | `https://oauth.api.flute.com/oauth2/token` |
 
 Use `--profile` (global flag, accepted before or after the subcommand). Active profile is shown in the dashboard title.
