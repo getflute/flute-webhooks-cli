@@ -76,12 +76,13 @@ impl ApiClient {
         body: Option<serde_json::Value>,
     ) -> Result<R, ApiError> {
         let url = format!("{}{}", self.base_url, path);
-        // Body is logged at debug level in full; bearer token is intentionally not logged.
-        let body_for_log = body.as_ref().map(|b| b.to_string());
+        // Body is logged at debug level with `hmacSecret`/`secret` values
+        // masked; bearer token is intentionally not logged.
+        let body_for_log = body.as_ref().map(|b| redact_secrets(&b.to_string()));
         debug!(method = %method, url = %url, body = ?body_for_log, "HTTP request");
 
         let (mut status, mut text) = self.issue(&method, &url, body.as_ref()).await?;
-        debug!(method = %method, url = %url, status = status.as_u16(), body = %text, "HTTP response");
+        debug!(method = %method, url = %url, status = status.as_u16(), body = %redact_secrets(&text), "HTTP response");
 
         // Reactive token refresh: a 401 may mean our cached token is stale
         // (clock skew, server restart, revocation). Drop the cache, fetch a
@@ -90,7 +91,7 @@ impl ApiClient {
             info!("HTTP 401 — invalidating cached token and retrying once");
             self.tokens.invalidate().await;
             let (s2, t2) = self.issue(&method, &url, body.as_ref()).await?;
-            debug!(method = %method, url = %url, status = s2.as_u16(), body = %t2, "HTTP response (after refresh)");
+            debug!(method = %method, url = %url, status = s2.as_u16(), body = %redact_secrets(&t2), "HTTP response (after refresh)");
             status = s2;
             text = t2;
         }
@@ -122,7 +123,7 @@ impl ApiClient {
         } else {
             debug!(
                 method = %method, url = %url, status = status.as_u16(),
-                body = %text,
+                body = %redact_secrets(&text),
                 "HTTP response"
             );
             Err(from_aspnet(status.as_u16(), &text))
@@ -220,5 +221,88 @@ impl ApiClient {
             None,
         )
         .await
+    }
+}
+
+/// Mask `hmacSecret` / `secret` values in a JSON body before it lands in a
+/// debug log. `hmacSecret` is a one-shot HMAC returned by `endpoints create`
+/// and never re-issued, so keeping it out of shell scrollback and the TUI log
+/// file matters even under `--debug`. Non-JSON input is returned unchanged so
+/// server error pages (HTML, plain text) still render in the log.
+fn redact_secrets(body: &str) -> String {
+    let Ok(mut v) = serde_json::from_str::<serde_json::Value>(body) else {
+        return body.to_string();
+    };
+    redact_json_value(&mut v);
+    v.to_string()
+}
+
+fn redact_json_value(v: &mut serde_json::Value) {
+    match v {
+        serde_json::Value::Object(map) => {
+            for (k, val) in map.iter_mut() {
+                if matches!(k.as_str(), "hmacSecret" | "secret") {
+                    *val = serde_json::Value::String("[REDACTED]".into());
+                } else {
+                    redact_json_value(val);
+                }
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                redact_json_value(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[cfg(test)]
+mod redact_tests {
+    use super::redact_secrets;
+    use serde_json::Value;
+
+    #[test]
+    fn redacts_hmac_secret_field_value() {
+        let input = r#"{"endpointId":"abc","hmacSecret":"whsec_supersecret"}"#;
+        let out = redact_secrets(input);
+        assert!(!out.contains("whsec_supersecret"), "secret leaked: {out}");
+        let parsed: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(parsed["hmacSecret"], "[REDACTED]");
+        assert_eq!(parsed["endpointId"], "abc");
+    }
+
+    #[test]
+    fn redacts_legacy_secret_alias() {
+        let input = r#"{"secret":"whsec_old"}"#;
+        let out = redact_secrets(input);
+        assert!(!out.contains("whsec_old"), "secret leaked: {out}");
+        let parsed: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(parsed["secret"], "[REDACTED]");
+    }
+
+    #[test]
+    fn redacts_nested_secret_inside_array() {
+        let input = r#"{"items":[{"hmacSecret":"a"},{"hmacSecret":"b"}]}"#;
+        let out = redact_secrets(input);
+        assert!(!out.contains("\"a\""));
+        assert!(!out.contains("\"b\""));
+        let parsed: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(parsed["items"][0]["hmacSecret"], "[REDACTED]");
+        assert_eq!(parsed["items"][1]["hmacSecret"], "[REDACTED]");
+    }
+
+    #[test]
+    fn non_json_input_is_returned_unchanged() {
+        let input = "<html>bad gateway</html>";
+        assert_eq!(redact_secrets(input), input);
+    }
+
+    #[test]
+    fn json_without_secret_fields_is_semantically_unchanged() {
+        let input = r#"{"id":"1","name":"n","nested":{"k":"v"}}"#;
+        let a: Value = serde_json::from_str(input).unwrap();
+        let b: Value = serde_json::from_str(&redact_secrets(input)).unwrap();
+        assert_eq!(a, b);
     }
 }
