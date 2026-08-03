@@ -152,7 +152,7 @@ async fn execute_action(
     match action {
         AppAction::Create(req) => match api.create_endpoint(&req).await {
             Ok(resp) => {
-                let secret = resp.secret.unwrap_or_else(|| "(none returned)".into());
+                let secret = resp.hmac_secret.unwrap_or_else(|| "(none returned)".into());
                 let _ = outcome_tx.send(ActionOutcome::Created { secret }).await;
             }
             Err(e) => {

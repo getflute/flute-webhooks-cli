@@ -181,20 +181,12 @@ pub fn print_event_types(types: &[EventTypeMeta], fmt: OutputFormat) -> anyhow::
 
 pub fn print_delivery_logs(
     logs: &[DeliveryLog],
-    total: Option<i32>,
+    total_items: i32,
     fmt: OutputFormat,
 ) -> anyhow::Result<()> {
-    if fmt == OutputFormat::Json {
-        // Wrap into a {items, total} envelope so json output mirrors the API.
-        #[derive(Serialize)]
-        struct Wrapper<'a> {
-            items: &'a [DeliveryLog],
-            total: Option<i32>,
-        }
-        let s = serde_json::to_string_pretty(&Wrapper { items: logs, total })?;
-        println!("{s}");
-        return Ok(());
-    }
+    // The JSON path is handled by the caller (which mirrors the full server
+    // envelope including pageInfo). This function is table-only.
+    let _ = fmt;
     let mut out = std::io::stdout().lock();
     writeln!(
         out,
@@ -228,9 +220,7 @@ pub fn print_delivery_logs(
             fit(&l.id, 36)
         )?;
     }
-    if let Some(t) = total {
-        writeln!(out, "\n{} of {} total", logs.len(), t)?;
-    }
+    writeln!(out, "\n{} of {} total", logs.len(), total_items)?;
     Ok(())
 }
 

@@ -12,40 +12,58 @@ pub enum WebhookDeliveryLogStatus {
     Success,
     Failure,
     /// In-flight retry that has been scheduled but not yet attempted.
-    /// The server emits this state on newly-queued retries (e.g. right after
-    /// `deliveries retry <id>` returns); it transitions to Success or Failure
-    /// once the next attempt completes.
     Pending,
+}
+
+/// Pagination metadata that accompanies `Items` in every `PagedResponse<T>`.
+/// The Flute v2 spec added this envelope in ARISE-4321 (endpoints list) and
+/// ARISE-4319 (delivery-logs list); both endpoints now return `{ items,
+/// pageInfo }` regardless of whether callers passed paging query params.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageInfo {
+    pub page_index: i32,
+    pub page_size: i32,
+    pub total_items: i32,
+    pub total_pages: i32,
+    pub has_more: bool,
+}
+
+/// Standard paginated response envelope. `Items` may be empty; `PageInfo`
+/// is always present.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PagedResponse<T> {
+    pub items: Option<Vec<T>>,
+    pub page_info: PageInfo,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetWebhookEndpointDto {
-    // As of the 2026-06 flute.com API rebrand, list/get responses namespace
-    // these two fields: the endpoint identifier is no longer just `id`, and
-    // the human-readable label is no longer just `name`. Rust field names
-    // stay short for ergonomics; the wire form uses the new names.
+    // Wire names (post ARISE-4204 / #1283 spec conformance): `endpointId`,
+    // `endpointName`, `endpointStatus`. Rust identifiers stay short for
+    // ergonomics. `endpointUrl`, `eventTypes`, `createdOn`, `modifiedOn` are
+    // camelCase-natural and don't need explicit renames.
     #[serde(rename = "endpointId")]
     pub id: String,
-    #[serde(rename = "webhookName")]
+    #[serde(rename = "endpointName")]
     pub name: Option<String>,
     pub endpoint_url: Option<String>,
+    #[serde(rename = "endpointStatus")]
     pub status: WebhookEndpointStatus,
     pub event_types: Option<Vec<String>>,
     pub created_on: Option<DateTime<Utc>>,
     pub modified_on: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ListWebhookEndpointsDto {
-    pub data: Option<Vec<GetWebhookEndpointDto>>,
-}
+/// Endpoints list response — paginated envelope per ARISE-4321.
+pub type ListWebhookEndpointsDto = PagedResponse<GetWebhookEndpointDto>;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWebhookEndpointRequest {
-    #[serde(rename = "webhookName")]
+    #[serde(rename = "endpointName")]
     pub name: String,
     pub endpoint_url: String,
     pub event_types: Vec<String>,
@@ -56,25 +74,26 @@ pub struct CreateWebhookEndpointRequest {
 pub struct CreateWebhookEndpointResponse {
     #[serde(rename = "endpointId")]
     pub id: String,
-    #[serde(rename = "webhookName")]
+    #[serde(rename = "endpointName")]
     pub name: Option<String>,
     pub endpoint_url: Option<String>,
+    #[serde(rename = "endpointStatus")]
     pub status: WebhookEndpointStatus,
-    // Server returns the HMAC under `hmacSecret` (post-2026-06 rebrand).
-    // Older releases used `secret`; keep that as an alias so a server in a
-    // mixed state still surfaces the field instead of silently dropping it.
-    #[serde(rename = "hmacSecret", alias = "secret")]
-    pub secret: Option<String>,
+    /// One-shot HMAC signing secret. The server only returns it on the
+    /// create call; any subsequent GET omits it. Wire name is `hmacSecret`;
+    /// `--debug` HTTP body logs redact this field's value.
+    pub hmac_secret: Option<String>,
     pub event_types: Option<Vec<String>>,
-    pub created_at: Option<DateTime<Utc>>,
+    pub created_on: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateWebhookEndpointRequest {
-    #[serde(rename = "webhookName")]
+    #[serde(rename = "endpointName")]
     pub name: String,
     pub endpoint_url: String,
+    #[serde(rename = "endpointStatus")]
     pub status: WebhookEndpointStatus,
     pub event_types: Vec<String>,
 }
@@ -82,34 +101,41 @@ pub struct UpdateWebhookEndpointRequest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventTypeDto {
-    #[serde(rename = "eventTypeId")]
-    pub id: i32,
+    // Post-ARISE-4204 the wire dropped `eventTypeId` and renamed `name` to
+    // `eventType`. The catalog is matched by the wire-format event-type
+    // string on both sides; consumers no longer need an integer id.
+    #[serde(rename = "eventType")]
     pub name: Option<String>,
     pub description: Option<String>,
     pub group: Option<String>,
 }
 
+/// Event-types catalog — flat `{ items: [...] }` envelope (not paginated).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListEventTypesDto {
-    pub data: Option<Vec<EventTypeDto>>,
+    pub items: Option<Vec<EventTypeDto>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeliveryLogSummaryDto {
-    // Post-2026-06 flute.com API: `id`, `status`, and the duration field were
-    // namespaced. Rust field names stay short; wire names follow the server.
+    // Wire names (post ARISE-4204): `deliveryLogId`, `endpointId`,
+    // `endpointName`, `deliveryLogStatus`, `endpointHTTPResponseCode`,
+    // `roundTripDurationMs`. Rust identifiers stay short.
     #[serde(rename = "deliveryLogId")]
     pub id: String,
+    #[serde(rename = "endpointId")]
     pub webhook_endpoint_id: String,
+    #[serde(rename = "endpointName")]
     pub webhook_name: Option<String>,
     pub endpoint_url: Option<String>,
     pub event_id: String,
     pub event_type: Option<String>,
     pub attempt_number: i32,
-    #[serde(rename = "deliveryAttemptStatus")]
+    #[serde(rename = "deliveryLogStatus")]
     pub status: WebhookDeliveryLogStatus,
+    #[serde(rename = "endpointHTTPResponseCode")]
     pub response_status_code: Option<i32>,
     #[serde(rename = "roundTripDurationMs")]
     pub duration_ms: i32,
@@ -122,14 +148,17 @@ pub struct DeliveryLogSummaryDto {
 pub struct DeliveryLogDetailDto {
     #[serde(rename = "deliveryLogId")]
     pub id: String,
+    #[serde(rename = "endpointId")]
     pub webhook_endpoint_id: String,
+    #[serde(rename = "endpointName")]
     pub webhook_name: Option<String>,
     pub endpoint_url: Option<String>,
     pub event_id: String,
     pub event_type: Option<String>,
     pub attempt_number: i32,
-    #[serde(rename = "deliveryAttemptStatus")]
+    #[serde(rename = "deliveryLogStatus")]
     pub status: WebhookDeliveryLogStatus,
+    #[serde(rename = "endpointHTTPResponseCode")]
     pub response_status_code: Option<i32>,
     #[serde(rename = "roundTripDurationMs")]
     pub duration_ms: i32,
@@ -142,24 +171,18 @@ pub struct DeliveryLogDetailDto {
     pub next_retry_at: Option<DateTime<Utc>>,
 }
 
-/// Live API delivery-logs response shape: `{ "items": [...], "total": N }`.
-/// (The earlier `{ "data": [...], "pagination": {...} }` shape was from a
-/// stale local swagger.json — confirmed against the live spec at
-/// /isv-api/swagger/v2/swagger.json.)
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ListDeliveryLogsDto {
-    pub items: Option<Vec<DeliveryLogSummaryDto>>,
-    pub total: Option<i32>,
-}
+/// Delivery-logs list response — paginated envelope per ARISE-4319.
+pub type ListDeliveryLogsDto = PagedResponse<DeliveryLogSummaryDto>;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PingResponseDto {
+    // Wire names (post ARISE-4204): `isDelivered`, `endpointHTTPResponseCode`,
+    // `roundTripDurationMs`.
+    #[serde(rename = "isDelivered")]
     pub success: bool,
+    #[serde(rename = "endpointHTTPResponseCode")]
     pub status_code: Option<i32>,
-    // Same rename as DeliveryLogSummaryDto: server now reports the timing
-    // field as `roundTripDurationMs` post-2026-06 rebrand.
     #[serde(rename = "roundTripDurationMs")]
     pub duration_ms: i32,
     pub error_message: Option<String>,
@@ -170,10 +193,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn deserializes_endpoint_with_namespaced_field_names() {
-        // Post-2026-06 flute.com API: `id` is wire-encoded as `endpointId`,
-        // `name` as `webhookName`. Other fields are unchanged camelCase.
-        let json = r#"{"endpointId":"00000000-0000-0000-0000-000000000001","webhookName":"My EP","endpointUrl":"https://x","status":"Active","eventTypes":["transaction.card.captured"],"createdOn":"2026-04-30T12:00:00Z","modifiedOn":"2026-04-30T12:00:00Z"}"#;
+    fn deserializes_endpoint_with_v2_field_names() {
+        let json = r#"{"endpointId":"00000000-0000-0000-0000-000000000001","endpointName":"My EP","endpointUrl":"https://x","endpointStatus":"Active","eventTypes":["transaction.card.captured"],"createdOn":"2026-04-30T12:00:00Z","modifiedOn":"2026-04-30T12:00:00Z"}"#;
         let v: GetWebhookEndpointDto = serde_json::from_str(json).unwrap();
         assert_eq!(v.id, "00000000-0000-0000-0000-000000000001");
         assert_eq!(v.name.as_deref(), Some("My EP"));
@@ -183,8 +204,16 @@ mod tests {
     }
 
     #[test]
-    fn serializes_create_request_with_webhook_name() {
-        // The server expects `webhookName` on write paths, not `name`.
+    fn deserializes_endpoints_list_paginated_envelope() {
+        let json = r#"{"items":[{"endpointId":"ep-1","endpointName":"n","endpointUrl":"https://x","endpointStatus":"Active","eventTypes":[],"createdOn":"2026-04-30T12:00:00Z","modifiedOn":"2026-04-30T12:00:00Z"}],"pageInfo":{"pageIndex":0,"pageSize":20,"totalItems":1,"totalPages":1,"hasMore":false}}"#;
+        let v: ListWebhookEndpointsDto = serde_json::from_str(json).unwrap();
+        assert_eq!(v.items.unwrap().len(), 1);
+        assert_eq!(v.page_info.total_items, 1);
+        assert!(!v.page_info.has_more);
+    }
+
+    #[test]
+    fn serializes_create_request_with_endpoint_name() {
         let req = CreateWebhookEndpointRequest {
             name: "My EP".into(),
             endpoint_url: "https://x".into(),
@@ -192,56 +221,98 @@ mod tests {
         };
         let json = serde_json::to_value(&req).unwrap();
         assert!(
-            json.get("webhookName").is_some(),
-            "wire field should be webhookName, got: {json}"
+            json.get("endpointName").is_some(),
+            "wire field should be endpointName, got: {json}"
         );
         assert!(
-            json.get("name").is_none(),
-            "legacy `name` must not appear: {json}"
+            json.get("webhookName").is_none(),
+            "legacy `webhookName` must not appear: {json}"
         );
     }
 
     #[test]
-    fn deserializes_event_type_grouping() {
-        let json = r#"{"eventTypeId":1,"name":"transaction.card.captured","description":"d","group":"Card Transactions"}"#;
+    fn deserializes_create_response_with_hmac_secret_and_created_on() {
+        let json = r#"{"endpointId":"ep-1","endpointName":"n","endpointUrl":"https://x","endpointStatus":"Active","hmacSecret":"abc","eventTypes":["ping"],"createdOn":"2026-04-30T12:00:00Z"}"#;
+        let v: CreateWebhookEndpointResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(v.hmac_secret.as_deref(), Some("abc"));
+        assert!(v.created_on.is_some());
+    }
+
+    #[test]
+    fn serializes_update_request_with_endpoint_status() {
+        let req = UpdateWebhookEndpointRequest {
+            name: "n".into(),
+            endpoint_url: "https://x".into(),
+            status: WebhookEndpointStatus::Inactive,
+            event_types: vec!["ping".into()],
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert!(json.get("endpointStatus").is_some());
+        assert!(json.get("status").is_none());
+    }
+
+    #[test]
+    fn deserializes_event_type_without_id_field() {
+        // Post-ARISE-4204 wire drops `eventTypeId` and renames `name` to
+        // `eventType`. Consumers match by the wire event-type string.
+        let json = r#"{"eventType":"transaction.card.captured","description":"d","group":"Card Transactions"}"#;
         let v: EventTypeDto = serde_json::from_str(json).unwrap();
         assert_eq!(v.name.unwrap(), "transaction.card.captured");
         assert_eq!(v.group.unwrap(), "Card Transactions");
     }
 
     #[test]
-    fn deserializes_delivery_log_summary() {
-        let json = r#"{"deliveryLogId":"00000000-0000-0000-0000-0000000000aa","webhookEndpointId":"00000000-0000-0000-0000-0000000000bb","webhookName":"X","endpointUrl":"https://x","eventId":"00000000-0000-0000-0000-0000000000cc","eventType":"transaction.card.captured","attemptNumber":1,"deliveryAttemptStatus":"Success","responseStatusCode":200,"roundTripDurationMs":120,"errorMessage":null,"createdOn":"2026-04-30T12:00:00Z"}"#;
+    fn deserializes_event_types_list_with_items_envelope() {
+        let json = r#"{"items":[{"eventType":"payment_session.created","description":"created","group":"Payment Sessions"}]}"#;
+        let v: ListEventTypesDto = serde_json::from_str(json).unwrap();
+        let items = v.items.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name.as_deref(), Some("payment_session.created"));
+    }
+
+    #[test]
+    fn deserializes_delivery_log_summary_with_v2_field_names() {
+        let json = r#"{"deliveryLogId":"00000000-0000-0000-0000-0000000000aa","endpointId":"00000000-0000-0000-0000-0000000000bb","endpointName":"X","endpointUrl":"https://x","eventId":"00000000-0000-0000-0000-0000000000cc","eventType":"transaction.card.captured","attemptNumber":1,"deliveryLogStatus":"Success","endpointHTTPResponseCode":200,"roundTripDurationMs":120,"errorMessage":null,"createdOn":"2026-04-30T12:00:00Z"}"#;
         let v: DeliveryLogSummaryDto = serde_json::from_str(json).unwrap();
         assert_eq!(v.status, WebhookDeliveryLogStatus::Success);
         assert_eq!(v.response_status_code, Some(200));
+        assert_eq!(
+            v.webhook_endpoint_id,
+            "00000000-0000-0000-0000-0000000000bb"
+        );
     }
 
     #[test]
     fn deserializes_delivery_log_summary_with_pending_status() {
-        // Pending shows up on freshly-scheduled retries. Before the variant
-        // was added, this exact payload broke deserialization across the CLI,
-        // TUI poller, and listener — see AGENTS.md "Status enum values".
-        let json = r#"{"deliveryLogId":"00000000-0000-0000-0000-0000000000aa","webhookEndpointId":"00000000-0000-0000-0000-0000000000bb","webhookName":null,"endpointUrl":null,"eventId":"00000000-0000-0000-0000-0000000000cc","eventType":"transaction.card.captured","attemptNumber":2,"deliveryAttemptStatus":"Pending","responseStatusCode":null,"roundTripDurationMs":0,"errorMessage":null,"createdOn":"2026-06-04T12:00:00Z"}"#;
+        let json = r#"{"deliveryLogId":"00000000-0000-0000-0000-0000000000aa","endpointId":"00000000-0000-0000-0000-0000000000bb","endpointName":null,"endpointUrl":null,"eventId":"00000000-0000-0000-0000-0000000000cc","eventType":"transaction.card.captured","attemptNumber":2,"deliveryLogStatus":"Pending","endpointHTTPResponseCode":null,"roundTripDurationMs":0,"errorMessage":null,"createdOn":"2026-06-04T12:00:00Z"}"#;
         let v: DeliveryLogSummaryDto = serde_json::from_str(json).unwrap();
         assert_eq!(v.status, WebhookDeliveryLogStatus::Pending);
     }
 
     #[test]
-    fn deserializes_delivery_logs_list_with_items_and_total() {
-        // Matches the live API shape: { items: [...], total: N }.
-        let json = r#"{"items":[{"deliveryLogId":"00000000-0000-0000-0000-0000000000aa","webhookEndpointId":"00000000-0000-0000-0000-0000000000bb","eventId":"00000000-0000-0000-0000-0000000000cc","eventType":"transaction.card.captured","attemptNumber":1,"deliveryAttemptStatus":"Success","responseStatusCode":200,"roundTripDurationMs":12,"errorMessage":null,"createdOn":"2026-04-30T12:00:00Z","webhookName":null,"endpointUrl":null}],"total":4242}"#;
+    fn deserializes_delivery_logs_list_paginated_envelope() {
+        let json = r#"{"items":[{"deliveryLogId":"00000000-0000-0000-0000-0000000000aa","endpointId":"00000000-0000-0000-0000-0000000000bb","eventId":"00000000-0000-0000-0000-0000000000cc","eventType":"transaction.card.captured","attemptNumber":1,"deliveryLogStatus":"Success","endpointHTTPResponseCode":200,"roundTripDurationMs":12,"errorMessage":null,"createdOn":"2026-04-30T12:00:00Z","endpointName":null,"endpointUrl":null}],"pageInfo":{"pageIndex":0,"pageSize":50,"totalItems":4242,"totalPages":85,"hasMore":true}}"#;
         let v: ListDeliveryLogsDto = serde_json::from_str(json).unwrap();
         assert_eq!(v.items.unwrap().len(), 1);
-        assert_eq!(v.total, Some(4242));
+        assert_eq!(v.page_info.total_items, 4242);
+        assert!(v.page_info.has_more);
+    }
+
+    #[test]
+    fn deserializes_ping_response_with_is_delivered_and_endpoint_http_code() {
+        let json = r#"{"isDelivered":true,"endpointHTTPResponseCode":200,"roundTripDurationMs":42,"errorMessage":null}"#;
+        let v: PingResponseDto = serde_json::from_str(json).unwrap();
+        assert!(v.success);
+        assert_eq!(v.status_code, Some(200));
+        assert_eq!(v.duration_ms, 42);
     }
 
     #[test]
     fn delivery_log_summary_and_detail_agree_on_field_names() {
-        // Regression for the "list and get use different schemas" bug
-        // (proposal.md, fixed in v0.5.6). Every key on the summary DTO
-        // must exist on the detail DTO with the same name — otherwise
-        // consumers can't reuse field paths across `list` and `get`.
+        // Every wire field on the summary DTO must exist on the detail DTO
+        // with the same name — consumers reuse field paths between
+        // `deliveries list` and `deliveries get`. Regression for the
+        // proposal.md concern (fixed in v0.5.6, preserved here).
         let summary = DeliveryLogSummaryDto {
             id: "x".into(),
             webhook_endpoint_id: "y".into(),
@@ -281,24 +352,25 @@ mod tests {
             sj.as_object().unwrap().keys().map(|s| s.as_str()).collect();
         let dk: std::collections::BTreeSet<&str> =
             dj.as_object().unwrap().keys().map(|s| s.as_str()).collect();
-        // Summary keys must be a subset of detail keys (detail is strictly
-        // wider — it adds the request/response bodies + next_retry_at).
         let missing: Vec<&&str> = sk.difference(&dk).collect();
         assert!(
             missing.is_empty(),
             "summary keys not present on detail: {missing:?}",
         );
-        // Spot-check that the renamed fields use the namespaced names on
+        // Spot-check that the v2-renamed fields use the namespaced names on
         // BOTH sides — i.e. neither leaks the bare Rust identifier.
         for k in [
             "deliveryLogId",
-            "deliveryAttemptStatus",
+            "endpointId",
+            "endpointName",
+            "deliveryLogStatus",
+            "endpointHTTPResponseCode",
             "roundTripDurationMs",
         ] {
             assert!(sk.contains(k), "summary missing wire key {k}");
             assert!(dk.contains(k), "detail missing wire key {k}");
         }
-        for k in ["id", "status", "duration_ms"] {
+        for k in ["id", "status", "duration_ms", "webhook_endpoint_id"] {
             assert!(!sk.contains(k), "summary leaked raw Rust key {k}");
             assert!(!dk.contains(k), "detail leaked raw Rust key {k}");
         }
