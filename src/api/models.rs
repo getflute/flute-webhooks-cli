@@ -11,8 +11,6 @@ pub enum WebhookEndpointStatus {
 pub enum WebhookDeliveryLogStatus {
     Success,
     Failure,
-    /// In-flight retry that has been scheduled but not yet attempted.
-    Pending,
 }
 
 /// Pagination metadata that accompanies `Items` in every `PagedResponse<T>`.
@@ -87,15 +85,23 @@ pub struct CreateWebhookEndpointResponse {
     pub created_on: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+/// JSON Merge Patch (RFC 7396) body for `PATCH /v2/webhooks/endpoints/{id}`.
+///
+/// Every field is `Option<T>` and serialized only when set — an omitted field
+/// leaves the server-side value unchanged; a present value overwrites. The
+/// server rejects explicit `null` on `endpointStatus` (ARISE-4234), so the
+/// CLI never emits a null key: unset flags simply don't appear in the body.
+#[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateWebhookEndpointRequest {
-    #[serde(rename = "endpointName")]
-    pub name: String,
-    pub endpoint_url: String,
-    #[serde(rename = "endpointStatus")]
-    pub status: WebhookEndpointStatus,
-    pub event_types: Vec<String>,
+    #[serde(rename = "endpointName", skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endpoint_url: Option<String>,
+    #[serde(rename = "endpointStatus", skip_serializing_if = "Option::is_none")]
+    pub status: Option<WebhookEndpointStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_types: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -239,16 +245,45 @@ mod tests {
     }
 
     #[test]
-    fn serializes_update_request_with_endpoint_status() {
+    fn serializes_partial_update_request_omits_unset_fields() {
+        // Merge-patch: only the fields the user actually set are on the wire.
+        // Server treats absent keys as "leave unchanged".
         let req = UpdateWebhookEndpointRequest {
-            name: "n".into(),
-            endpoint_url: "https://x".into(),
-            status: WebhookEndpointStatus::Inactive,
-            event_types: vec!["ping".into()],
+            status: Some(WebhookEndpointStatus::Inactive),
+            ..Default::default()
         };
         let json = serde_json::to_value(&req).unwrap();
-        assert!(json.get("endpointStatus").is_some());
-        assert!(json.get("status").is_none());
+        assert_eq!(
+            json.get("endpointStatus").and_then(|v| v.as_str()),
+            Some("Inactive")
+        );
+        assert!(
+            json.get("endpointName").is_none(),
+            "name key must be absent when unset: {json}"
+        );
+        assert!(
+            json.get("endpointUrl").is_none(),
+            "url key must be absent when unset: {json}"
+        );
+        assert!(
+            json.get("eventTypes").is_none(),
+            "eventTypes key must be absent when unset: {json}"
+        );
+    }
+
+    #[test]
+    fn serializes_update_request_with_all_fields_present() {
+        let req = UpdateWebhookEndpointRequest {
+            name: Some("n".into()),
+            endpoint_url: Some("https://x".into()),
+            status: Some(WebhookEndpointStatus::Active),
+            event_types: Some(vec!["ping".into()]),
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["endpointName"], "n");
+        assert_eq!(json["endpointUrl"], "https://x");
+        assert_eq!(json["endpointStatus"], "Active");
+        assert_eq!(json["eventTypes"], serde_json::json!(["ping"]));
     }
 
     #[test]
@@ -280,13 +315,6 @@ mod tests {
             v.webhook_endpoint_id,
             "00000000-0000-0000-0000-0000000000bb"
         );
-    }
-
-    #[test]
-    fn deserializes_delivery_log_summary_with_pending_status() {
-        let json = r#"{"deliveryLogId":"00000000-0000-0000-0000-0000000000aa","endpointId":"00000000-0000-0000-0000-0000000000bb","endpointName":null,"endpointUrl":null,"eventId":"00000000-0000-0000-0000-0000000000cc","eventType":"transaction.card.captured","attemptNumber":2,"deliveryLogStatus":"Pending","endpointHTTPResponseCode":null,"roundTripDurationMs":0,"errorMessage":null,"createdOn":"2026-06-04T12:00:00Z"}"#;
-        let v: DeliveryLogSummaryDto = serde_json::from_str(json).unwrap();
-        assert_eq!(v.status, WebhookDeliveryLogStatus::Pending);
     }
 
     #[test]

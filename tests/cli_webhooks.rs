@@ -127,33 +127,16 @@ async fn endpoints_create_rejects_empty_events() {
 }
 
 #[tokio::test]
-async fn endpoints_update_does_get_then_put_with_merged_state() {
-    // The user only passes --status; URL/events/name must come back from the
-    // GET and round-trip into the PUT untouched. Otherwise a partial update
-    // accidentally clears server-side fields.
+async fn endpoints_update_sends_patch_with_only_supplied_fields() {
+    // The user only passes --status; the CLI must PATCH with a body
+    // containing only that key. RFC 7396 merge-patch semantics leave every
+    // other field unchanged server-side — no GET-first-then-PUT.
     let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/v2/webhooks/endpoints/ep-1"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "endpointId": "ep-1",
-            "endpointName": "preserved-name",
-            "endpointUrl": "https://preserved.example.com/hook",
-            "endpointStatus": "Active",
-            "eventTypes": ["a.b", "c.d"],
-            "createdOn": "2026-05-04T00:00:00Z",
-            "modifiedOn": "2026-05-04T00:00:00Z"
-        })))
-        .expect(1)
-        .mount(&server)
-        .await;
 
-    Mock::given(method("PUT"))
+    Mock::given(method("PATCH"))
         .and(path("/v2/webhooks/endpoints/ep-1"))
         .and(body_json(json!({
-            "endpointName": "preserved-name",
-            "endpointUrl": "https://preserved.example.com/hook",
-            "endpointStatus": "Inactive",
-            "eventTypes": ["a.b", "c.d"]
+            "endpointStatus": "Inactive"
         })))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "endpointId": "ep-1",

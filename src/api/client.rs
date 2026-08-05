@@ -166,6 +166,11 @@ impl ApiClient {
             .await
     }
 
+    /// Update an endpoint via JSON Merge Patch. The server accepts PATCH
+    /// (not PUT), and any field absent from `req` is left unchanged
+    /// server-side — the `Option<T>` fields with `skip_serializing_if` on
+    /// `UpdateWebhookEndpointRequest` produce a body containing only the
+    /// keys the caller actually set.
     pub async fn update_endpoint(
         &self,
         id: &str,
@@ -174,7 +179,7 @@ impl ApiClient {
         let body = serde_json::to_value(req)
             .map_err(|e| ApiError::Decode(format!("encode update_endpoint body: {e}")))?;
         self.send(
-            Method::PUT,
+            Method::PATCH,
             &format!("/v2/webhooks/endpoints/{id}"),
             Some(body),
         )

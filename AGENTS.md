@@ -26,13 +26,13 @@ Every non-TUI subcommand accepts `--output json`. For `webhooks …` subcommands
 | `webhooks endpoints list` | `PagedResponse<GetWebhookEndpointDto>` — `{ items: [...], pageInfo: {...} }`. The CLI sends `pageSize=100` per call; check `pageInfo.hasMore` for accounts with more than 100 endpoints. |
 | `webhooks endpoints get <id>` | `GetWebhookEndpointDto` |
 | `webhooks endpoints create …` | `CreateWebhookEndpointResponse` (includes one-shot `hmacSecret` field — store it; the API never returns it again) |
-| `webhooks endpoints update <id> …` | `GetWebhookEndpointDto` (the merged state after PUT) |
+| `webhooks endpoints update <id> …` | `GetWebhookEndpointDto` (the endpoint state after the PATCH is applied). CLI sends **PATCH** with a JSON Merge Patch (RFC 7396) body — only the fields the caller passed on the command line appear in the wire body; every other field is left unchanged server-side. |
 | `webhooks endpoints delete <id> --yes` | Under `--output json`: `{"deleted":"<id>"}` on success, exit 0. Under `--output table` (default): human-readable `Deleted endpoint <id>.` line. Agents should always pass `--output json`. |
 | `webhooks endpoints ping <id>` | `PingResponseDto { isDelivered, endpointHTTPResponseCode, roundTripDurationMs, errorMessage? }` |
 | `webhooks event-types list` | Bare JSON array of `EventTypeDto` objects: `{eventType, description, group}`. Match by the wire-format `eventType` string. |
 | `webhooks deliveries list …` | `PagedResponse<DeliveryLogSummaryDto>` — `{ items: [...], pageInfo: {...} }`. Items use the same wire field names as `deliveries get` — agents can reuse field paths between the two calls. |
 | `webhooks deliveries get <id>` | `DeliveryLogDetailDto` (full request + response bodies) |
-| `webhooks deliveries retry <id>` | `DeliveryRetryResponseDto { attemptNumber, eventId, eventType, status, webhookEndpointId }` — a distinct shape, not `DeliveryLogSummaryDto`. No `id` field. **Not spec-conformed in v0.7.0** — kept on the old wire names (`status`, `webhookEndpointId`) per the deferred ARISE-4234 follow-up. Treat this as a hazard: fields will change in a subsequent CLI release. |
+| `webhooks deliveries retry <id>` | `DeliveryLogDetailDto` — the same shape as `deliveries get`. HTTP 200. Represents the new delivery attempt's log record with full request + response bodies. |
 | `auth token` | bearer JWT as a single line of text — useful for `curl` smoke tests, not JSON |
 | `update` | text status line; exit 0 = up-to-date or updated successfully |
 
@@ -63,7 +63,7 @@ Everything is camelCase. The v0.7.0 spec pass normalized field naming across sur
 | `endpoints create` response | adds `hmacSecret` (one-shot; the API only returns it on the create call) and returns `createdOn` (not `createdAt`) |
 | `deliveries list` items (`DeliveryLogSummaryDto`) | `deliveryLogId`, `endpointId`, `endpointName`, `endpointUrl`, `eventId`, `eventType`, `deliveryLogStatus`, `attemptNumber`, `endpointHTTPResponseCode`, `roundTripDurationMs`, `errorMessage`, `createdOn` |
 | `deliveries get` (`DeliveryLogDetailDto`) | superset of the summary: adds `requestHeaders`, `requestBody`, `responseHeaders`, `responseBody`, `nextRetryAt` |
-| `deliveries retry` (`DeliveryRetryResponseDto`) | `attemptNumber`, `eventId`, `eventType`, `status`, `webhookEndpointId` (no `id` field). **Not yet spec-conformed** — see hazard note above. |
+| `deliveries retry` | Returns `DeliveryLogDetailDto` (same shape as `deliveries get`). No custom retry envelope. |
 | `event-types` list (`EventTypeDto`) | `eventType`, `description`, `group` (no numeric `eventTypeId` — the wire dropped it in ARISE-4204; match by the string `eventType`) |
 | `ping` response | `isDelivered`, `endpointHTTPResponseCode`, `roundTripDurationMs`, `errorMessage` |
 | `pageInfo` (in `endpoints list` and `deliveries list`) | `pageIndex`, `pageSize`, `totalItems`, `totalPages`, `hasMore` |
@@ -80,9 +80,9 @@ Returned values are **title-case** while filter inputs are **lowercase**. Agents
 | Surface | Filter values (CLI input) | Wire query-string key | Returned values (server) |
 |---|---|---|---|
 | `endpoints.endpointStatus` | `active`, `inactive` (via `--status`) | `endpointStatus` | `"Active"`, `"Inactive"` |
-| `deliveries.deliveryLogStatus` | `success`, `failed`, `pending` (via `--status`) | `deliveryLogStatus` | `"Success"`, `"Failure"`, `"Pending"` (the last for newly-scheduled retries) |
+| `deliveries.deliveryLogStatus` | `success`, `failed` (via `--status`) | `deliveryLogStatus` | `"Success"`, `"Failure"` |
 
-A case-insensitive comparison handles `success ↔ Success` and `pending ↔ Pending` but NOT `failed ↔ Failure` — that pair needs an explicit table.
+A case-insensitive comparison handles `success ↔ Success` but NOT `failed ↔ Failure` — that pair needs an explicit table.
 
 ### Pagination cap on `deliveries list`
 
@@ -163,7 +163,7 @@ A bearer token is fetched automatically from `oauth_url` on demand, cached for t
 | Intent | Command | Notes |
 |---|---|---|
 | "What webhook endpoints exist?" | `webhooks endpoints list` | Returns `{ items, pageInfo }`; iterate `items`. `pageInfo.hasMore == true` means an account with more than 100 endpoints. |
-| "Create a webhook for transaction events" | `webhooks endpoints create --url <URL> --events transaction.card.captured,refund.completed --name "<name>"` | **URL must be HTTPS.** `http://` (including `http://localhost` / `http://127.0.0.1`) is rejected server-side with `kind:"api"` + validation error. Use an HTTPS tunneling service (ngrok, cloudflared) for local development. |
+| "Create a webhook for transaction events" | `webhooks endpoints create --url <URL> --events transaction.card.captured,transaction.card.refunded --name "<name>"` | **URL must be HTTPS.** `http://` (including `http://localhost` / `http://127.0.0.1`) is rejected server-side with `kind:"api"` + validation error. Use an HTTPS tunneling service (ngrok, cloudflared) for local development. |
 | "Pause this endpoint" | `webhooks endpoints update <id> --status inactive` | Wire field is `endpointStatus`; CLI flag is `--status`. |
 | "Delete this endpoint" | `webhooks endpoints delete <id> --yes` | The `--yes` flag is required — no interactive prompt. Always pair with `--output json` if you want machine-parseable success. |
 | "Is this endpoint reachable?" | `webhooks endpoints ping <id>` | Response fields are `isDelivered: bool` and `endpointHTTPResponseCode: int?`. |
@@ -182,7 +182,8 @@ A bearer token is fetched automatically from `oauth_url` on demand, cached for t
 - **Don't poll faster than 5 s.** The configured floor and adaptive backoff exist for a reason; agent loops should respect `poll_interval_seconds` in `~/.flute/config.toml` (default 5).
 - **Don't pass `http://` URLs to `endpoints create`** — the API requires HTTPS.
 - **Don't retry ping deliveries** — they're synthetic and the server refuses them.
-- **Don't parse `deliveries retry` field names as spec-conformed.** ARISE-4234 is a deferred follow-up; that endpoint keeps the pre-v0.7.0 shape (`status`, `webhookEndpointId`) until its own PR lands.
+- **Don't send `PUT /v2/webhooks/endpoints/{id}`.** The endpoint accepts PATCH only and returns 405 for PUT. The CLI already handles this; only relevant if you're hand-rolling requests.
+- **Don't filter deliveries by `pending`.** The v2 `WebhookDeliveryLogStatus` enum was reduced to `Success` / `Failure`; any `Pending` filter value the server sees now returns HTTP 400.
 
 ## Migration from v0.6.x
 
@@ -200,6 +201,8 @@ Every wire rename in one place — apply these to any code that parsed the v0.6.
 | `deliveries.*.webhookEndpointId` | `deliveries.*.endpointId` |
 | `deliveries.*.webhookName` | `deliveries.*.endpointName` |
 | `deliveries.*.deliveryAttemptStatus` | `deliveries.*.deliveryLogStatus` |
+| `WebhookDeliveryLogStatus` enum `{Success, Failure, Pending}` | `{Success, Failure}` — `Pending` removed |
+| `PUT /v2/webhooks/endpoints/{id}` | `PATCH /v2/webhooks/endpoints/{id}` (JSON Merge Patch body) |
 | `deliveries.*.responseStatusCode` | `deliveries.*.endpointHTTPResponseCode` |
 | `deliveries list` query key `webhookId` | `endpointId` |
 | `deliveries list` query key `status` | `deliveryLogStatus` |

@@ -90,27 +90,20 @@ async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand
             name,
             status,
         } => {
-            // Get-merge-put: GET the current state, overlay only the supplied
-            // flags, PUT the merged version. Avoids accidentally clearing
-            // event_types when the user only wanted to rename.
-            let current = api
-                .get_endpoint(&id)
-                .await
-                .with_context(|| format!("get endpoint {id}"))?;
-            let merged = UpdateWebhookEndpointRequest {
-                name: name.unwrap_or_else(|| current.name.clone().unwrap_or_default()),
-                endpoint_url: url
-                    .unwrap_or_else(|| current.endpoint_url.clone().unwrap_or_default()),
-                status: match status {
-                    Some(EndpointStatusArg::Active) => WebhookEndpointStatus::Active,
-                    Some(EndpointStatusArg::Inactive) => WebhookEndpointStatus::Inactive,
-                    None => current.status,
-                },
-                event_types: events
-                    .unwrap_or_else(|| current.event_types.clone().unwrap_or_default()),
+            // JSON Merge Patch (RFC 7396): send only the fields the user
+            // provided. Everything else stays untouched server-side — no more
+            // GET-first-then-PUT roundtrip.
+            let patch = UpdateWebhookEndpointRequest {
+                name,
+                endpoint_url: url,
+                status: status.map(|s| match s {
+                    EndpointStatusArg::Active => WebhookEndpointStatus::Active,
+                    EndpointStatusArg::Inactive => WebhookEndpointStatus::Inactive,
+                }),
+                event_types: events,
             };
             let resp = api
-                .update_endpoint(&id, &merged)
+                .update_endpoint(&id, &patch)
                 .await
                 .with_context(|| format!("update endpoint {id}"))?;
             output::print_endpoint(&resp, fmt)
@@ -241,7 +234,6 @@ fn build_deliveries_query(
         let v = match s {
             DeliveryStatusArg::Success => "Success",
             DeliveryStatusArg::Failed => "Failure",
-            DeliveryStatusArg::Pending => "Pending",
         };
         parts.push(format!("deliveryLogStatus={v}"));
     }
@@ -268,9 +260,5 @@ mod tests {
         // even though we expose `--status failed` for nicer ergonomics.
         let q = build_deliveries_query(None, Some(DeliveryStatusArg::Failed), 1);
         assert_eq!(q, "?pageSize=1&deliveryLogStatus=Failure");
-
-        // Pending = in-flight retry.
-        let q = build_deliveries_query(None, Some(DeliveryStatusArg::Pending), 1);
-        assert_eq!(q, "?pageSize=1&deliveryLogStatus=Pending");
     }
 }
