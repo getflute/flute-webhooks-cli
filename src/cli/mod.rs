@@ -77,7 +77,11 @@ pub enum AuthCommand {
     Login,
 
     /// Print the current bearer token (debugging aid).
-    Token,
+    ///
+    /// `token` is accepted as a deprecated hidden alias for backward
+    /// compatibility — scripts should migrate to `keys`.
+    #[command(alias = "token")]
+    Keys,
 }
 
 #[derive(Subcommand, Debug)]
@@ -191,4 +195,28 @@ pub enum DeliveriesCommand {
 pub enum DeliveryStatusArg {
     Success,
     Failed,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    /// `auth keys` is the primary form; `auth token` is a deprecated hidden
+    /// alias that must continue to resolve to the same variant so existing
+    /// scripts don't break. Guards against accidental removal of the alias.
+    #[test]
+    fn auth_token_is_accepted_as_deprecated_alias_for_keys() {
+        let primary = Cli::try_parse_from(["flute-webhooks", "auth", "keys"])
+            .expect("`auth keys` should parse");
+        let alias = Cli::try_parse_from(["flute-webhooks", "auth", "token"])
+            .expect("`auth token` should still parse as the deprecated alias");
+
+        for parsed in [primary, alias] {
+            match parsed.command {
+                Some(Command::Auth(AuthCommand::Keys)) => {}
+                other => panic!("expected AuthCommand::Keys, got {other:?}"),
+            }
+        }
+    }
 }

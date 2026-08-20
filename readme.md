@@ -2,7 +2,7 @@
 
 A Rust CLI **and** terminal UI for working with Flute webhooks: manage endpoints, watch delivery logs in real time, retry failures, and forward incoming successful events to a local listener URL. Built with [ratatui](https://ratatui.rs), [reqwest](https://docs.rs/reqwest), [clap](https://docs.rs/clap), and tokio.
 
-![status](https://img.shields.io/badge/status-v0.7.0-blue)
+![status](https://img.shields.io/badge/status-v0.7.1-blue)
 [![release](https://github.com/getflute/flute-webhooks-cli/actions/workflows/release.yml/badge.svg)](https://github.com/getflute/flute-webhooks-cli/actions/workflows/release.yml)
 
 ## What it does
@@ -87,10 +87,10 @@ flute-webhooks --profile production auth login
 ### 2. Verify
 
 ```bash
-flute-webhooks auth token
+flute-webhooks auth keys
 ```
 
-Prints the current bearer JWT (useful for `curl` smoke tests).
+Prints the current bearer JWT (useful for `curl` smoke tests). `auth token` still works as a deprecated alias; new scripts should use `auth keys`.
 
 ### 3. Use it
 
@@ -193,7 +193,7 @@ When a newer version exists, run `flute-webhooks update` to install it. Binaries
 Pass `--debug` to log every HTTP request and response (status, URL, body) at debug level:
 
 ```bash
-flute-webhooks --debug auth token        # traces print to STDOUT
+flute-webhooks --debug auth keys         # traces print to STDOUT
 flute-webhooks --debug tui               # TUI: traces go to ~/.flute/flute-webhooks.log
 ```
 
