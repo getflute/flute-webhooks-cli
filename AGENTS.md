@@ -13,7 +13,7 @@ flute-webhooks auth login                       # interactive prompt — not age
 flute-webhooks --output json webhooks endpoints list
 ```
 
-Every non-TUI subcommand accepts `--output json`. For `webhooks …` subcommands, success emits pretty-printed JSON on **stdout** (per-command shape listed below; `auth token` and `update` are text-only — see the table). On failure a structured error envelope (see below) is printed to **stdout** and the process exits non-zero — agents parse one stream, never both.
+Every non-TUI subcommand accepts `--output json`. For `webhooks …` subcommands, success emits pretty-printed JSON on **stdout** (per-command shape listed below; `auth keys` and `update` are text-only — see the table). On failure a structured error envelope (see below) is printed to **stdout** and the process exits non-zero — agents parse one stream, never both.
 
 > **v0.7.0 note.** The Flute v2 webhooks surface underwent a spec-conformance pass (ARISE-4204 / -4321 / -4319) that renamed most wire fields and moved both `endpoints list` and `deliveries list` onto a paginated `{ items, pageInfo }` envelope. If you have code targeting v0.6.x, see the "Migration from v0.6.x" section at the bottom before parsing.
 
@@ -33,7 +33,7 @@ Every non-TUI subcommand accepts `--output json`. For `webhooks …` subcommands
 | `webhooks deliveries list …` | `PagedResponse<DeliveryLogSummaryDto>` — `{ items: [...], pageInfo: {...} }`. Items use the same wire field names as `deliveries get` — agents can reuse field paths between the two calls. |
 | `webhooks deliveries get <id>` | `DeliveryLogDetailDto` (full request + response bodies) |
 | `webhooks deliveries retry <id>` | `DeliveryLogDetailDto` — the same shape as `deliveries get`. HTTP 200. Represents the new delivery attempt's log record with full request + response bodies. |
-| `auth token` | bearer JWT as a single line of text — useful for `curl` smoke tests, not JSON |
+| `auth keys` | bearer JWT as a single line of text — useful for `curl` smoke tests, not JSON. `auth token` is a deprecated hidden alias that still works. |
 | `update` | text status line; exit 0 = up-to-date or updated successfully |
 
 Field types are defined in [`src/api/models.rs`](src/api/models.rs).
@@ -210,6 +210,10 @@ Every wire rename in one place — apply these to any code that parsed the v0.6.
 | `ping.statusCode` | `ping.endpointHTTPResponseCode` |
 
 Unchanged in v0.7.0: `hmacSecret`, `endpointUrl`, `eventTypes`, `createdOn`/`modifiedOn` on endpoints, `deliveryLogId`, `eventId`, `eventType`, `attemptNumber`, `roundTripDurationMs`, `errorMessage`, all the request/response body fields on `deliveries get`, the error envelope shape, and every CLI flag name (`--endpoint-id`, `--status`, `--limit`, `--url`, `--events`, `--name`, `--yes`).
+
+### Deprecations landing in v0.7.1
+
+- `auth token` → **`auth keys`.** The command was renamed for consistency with sibling CLIs (see `getflute/flute-cli`, which did the same `tokens → keys` rename). `auth token` continues to work as a hidden alias and produces identical output; there is no runtime warning. New agent code should invoke `auth keys` — `auth token` may be removed in a later major bump.
 
 ## See also
 

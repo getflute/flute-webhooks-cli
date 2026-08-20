@@ -60,7 +60,7 @@ pub fn run() -> anyhow::Result<()> {
         let dispatch_result = match cmd {
             cli::Command::Tui => tui::run(&profile, pending_tui_notice).await,
             cli::Command::Auth(cli::AuthCommand::Login) => auth_login(&profile).await,
-            cli::Command::Auth(cli::AuthCommand::Token) => auth_print_token(&profile).await,
+            cli::Command::Auth(cli::AuthCommand::Keys) => auth_print_keys(&profile).await,
             cli::Command::Listen { forward_to } => listen(&profile, &forward_to).await,
             cli::Command::Webhooks(c) => run_webhooks(&profile, output_fmt, c).await,
             cli::Command::Update => update::run().await,
@@ -303,7 +303,7 @@ async fn auth_login(profile: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn auth_print_token(profile: &str) -> anyhow::Result<()> {
+async fn auth_print_keys(profile: &str) -> anyhow::Result<()> {
     let p = config::Profile::by_name(profile)
         .ok_or_else(|| anyhow::anyhow!("unknown profile: {profile}"))?;
     let (id, secret) = auth::keychain::load_with_env_fallback(profile)?.ok_or_else(|| {
