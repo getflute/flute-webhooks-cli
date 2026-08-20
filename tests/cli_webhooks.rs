@@ -44,15 +44,16 @@ async fn endpoints_list_success_uses_get() {
     Mock::given(method("GET"))
         .and(path("/v2/webhooks/endpoints"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "data": [{
+            "items": [{
                 "endpointId": "ep-1",
-                "webhookName": "first",
+                "endpointName": "first",
                 "endpointUrl": "https://x",
-                "status": "Active",
+                "endpointStatus": "Active",
                 "eventTypes": ["ping"],
                 "createdOn": "2026-05-04T00:00:00Z",
                 "modifiedOn": "2026-05-04T00:00:00Z"
-            }]
+            }],
+            "pageInfo": {"pageIndex":0,"pageSize":100,"totalItems":1,"totalPages":1,"hasMore":false}
         })))
         .expect(1)
         .mount(&server)
@@ -74,18 +75,18 @@ async fn endpoints_create_sends_expected_request_body() {
     Mock::given(method("POST"))
         .and(path("/v2/webhooks/endpoints"))
         .and(body_json(json!({
-            "webhookName": "my-hook",
+            "endpointName": "my-hook",
             "endpointUrl": "https://example.com/hook",
             "eventTypes": ["transaction.card.captured", "refund.completed"]
         })))
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
             "endpointId": "ep-new",
-            "webhookName": "my-hook",
+            "endpointName": "my-hook",
             "endpointUrl": "https://example.com/hook",
-            "status": "Active",
+            "endpointStatus": "Active",
             "hmacSecret": "whsec_test",
             "eventTypes": ["transaction.card.captured", "refund.completed"],
-            "createdAt": "2026-05-04T00:00:00Z"
+            "createdOn": "2026-05-04T00:00:00Z"
         })))
         .expect(1)
         .mount(&server)
@@ -126,39 +127,22 @@ async fn endpoints_create_rejects_empty_events() {
 }
 
 #[tokio::test]
-async fn endpoints_update_does_get_then_put_with_merged_state() {
-    // The user only passes --status; URL/events/name must come back from the
-    // GET and round-trip into the PUT untouched. Otherwise a partial update
-    // accidentally clears server-side fields.
+async fn endpoints_update_sends_patch_with_only_supplied_fields() {
+    // The user only passes --status; the CLI must PATCH with a body
+    // containing only that key. RFC 7396 merge-patch semantics leave every
+    // other field unchanged server-side — no GET-first-then-PUT.
     let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/v2/webhooks/endpoints/ep-1"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "endpointId": "ep-1",
-            "webhookName": "preserved-name",
-            "endpointUrl": "https://preserved.example.com/hook",
-            "status": "Active",
-            "eventTypes": ["a.b", "c.d"],
-            "createdOn": "2026-05-04T00:00:00Z",
-            "modifiedOn": "2026-05-04T00:00:00Z"
-        })))
-        .expect(1)
-        .mount(&server)
-        .await;
 
-    Mock::given(method("PUT"))
+    Mock::given(method("PATCH"))
         .and(path("/v2/webhooks/endpoints/ep-1"))
         .and(body_json(json!({
-            "webhookName": "preserved-name",
-            "endpointUrl": "https://preserved.example.com/hook",
-            "status": "Inactive",
-            "eventTypes": ["a.b", "c.d"]
+            "endpointStatus": "Inactive"
         })))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "endpointId": "ep-1",
-            "webhookName": "preserved-name",
+            "endpointName": "preserved-name",
             "endpointUrl": "https://preserved.example.com/hook",
-            "status": "Inactive",
+            "endpointStatus": "Inactive",
             "eventTypes": ["a.b", "c.d"],
             "createdOn": "2026-05-04T00:00:00Z",
             "modifiedOn": "2026-05-04T00:00:00Z"
@@ -212,8 +196,8 @@ async fn endpoints_ping_returns_listener_response() {
     Mock::given(method("POST"))
         .and(path("/v2/webhooks/endpoints/ep-1/ping"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "success": true,
-            "statusCode": 200,
+            "isDelivered": true,
+            "endpointHTTPResponseCode": 200,
             "roundTripDurationMs": 42,
             "errorMessage": null
         })))
@@ -237,11 +221,11 @@ async fn deliveries_list_attaches_filter_query_params() {
     Mock::given(method("GET"))
         .and(path("/v2/webhooks/delivery-logs"))
         .and(query_param("pageSize", "75"))
-        .and(query_param("webhookId", "ep-7"))
-        .and(query_param("status", "Failure"))
+        .and(query_param("endpointId", "ep-7"))
+        .and(query_param("deliveryLogStatus", "Failure"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "items": [],
-            "total": 0
+            "pageInfo": {"pageIndex":0,"pageSize":75,"totalItems":0,"totalPages":0,"hasMore":false}
         })))
         .expect(1)
         .mount(&server)
@@ -294,9 +278,10 @@ async fn event_types_list_pretty_prints_grouped_catalog() {
     Mock::given(method("GET"))
         .and(path("/v2/webhooks/event-types"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "data": [
-                { "eventTypeId": 1, "name": "transaction.card.captured", "description": "captured", "group": "Card Transactions" },
-                { "eventTypeId": 2, "name": "settlement.batch.completed", "description": "settled", "group": "Settlements" }
+            "items": [
+                { "eventType": "transaction.card.captured", "description": "captured", "group": "Card Transactions" },
+                { "eventType": "settlement.batch.completed", "description": "settled", "group": "Settlements" },
+                { "eventType": "payment_session.created", "description": "created", "group": "Payment Sessions" }
             ]
         })))
         .expect(1)

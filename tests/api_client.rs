@@ -29,13 +29,15 @@ async fn list_endpoints_round_trips() {
     let server = MockServer::start().await;
     Mock::given(method("GET")).and(path("/v2/webhooks/endpoints"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "data": [{"endpointId":"00000000-0000-0000-0000-000000000001","webhookName":"X","endpointUrl":"https://x","status":"Active","eventTypes":["ping"],"createdOn":"2026-04-30T12:00:00Z","modifiedOn":"2026-04-30T12:00:00Z"}]
+            "items": [{"endpointId":"00000000-0000-0000-0000-000000000001","endpointName":"X","endpointUrl":"https://x","endpointStatus":"Active","eventTypes":["ping"],"createdOn":"2026-04-30T12:00:00Z","modifiedOn":"2026-04-30T12:00:00Z"}],
+            "pageInfo":{"pageIndex":0,"pageSize":100,"totalItems":1,"totalPages":1,"hasMore":false}
         })))
         .mount(&server).await;
 
     let api = client(server.uri());
     let r = api.list_endpoints().await.unwrap();
-    assert_eq!(r.data.unwrap().len(), 1);
+    assert_eq!(r.items.unwrap().len(), 1);
+    assert_eq!(r.page_info.total_items, 1);
 }
 
 #[tokio::test]
@@ -61,23 +63,23 @@ async fn list_delivery_logs_round_trips() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "items": [{
                 "deliveryLogId":"00000000-0000-0000-0000-00000000000a",
-                "webhookEndpointId":"00000000-0000-0000-0000-00000000000b",
-                "webhookName":"X","endpointUrl":"https://x",
+                "endpointId":"00000000-0000-0000-0000-00000000000b",
+                "endpointName":"X","endpointUrl":"https://x",
                 "eventId":"00000000-0000-0000-0000-00000000000c",
                 "eventType":"transaction.card.captured",
-                "attemptNumber":1,"deliveryAttemptStatus":"Success","responseStatusCode":200,
+                "attemptNumber":1,"deliveryLogStatus":"Success","endpointHTTPResponseCode":200,
                 "roundTripDurationMs":12,"errorMessage":null,
                 "createdOn":"2026-04-30T12:00:00Z"
             }],
-            "total": 1
+            "pageInfo": {"pageIndex":0,"pageSize":100,"totalItems":1,"totalPages":1,"hasMore":false}
         })))
         .mount(&server)
         .await;
 
     let api = client(server.uri());
-    let r = api.list_delivery_logs(500).await.unwrap();
+    let r = api.list_delivery_logs(100).await.unwrap();
     assert_eq!(r.items.unwrap().len(), 1);
-    assert_eq!(r.total, Some(1));
+    assert_eq!(r.page_info.total_items, 1);
 }
 
 /// On HTTP 401, the client must invalidate its cached token, fetch a fresh
@@ -113,11 +115,12 @@ async fn refreshes_token_and_retries_once_on_401() {
     Mock::given(method("GET"))
         .and(path("/v2/webhooks/endpoints"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "data": [{
-                "endpointId":"00000000-0000-0000-0000-000000000099","webhookName":"after-refresh",
-                "endpointUrl":"https://x","status":"Active","eventTypes":["ping"],
+            "items": [{
+                "endpointId":"00000000-0000-0000-0000-000000000099","endpointName":"after-refresh",
+                "endpointUrl":"https://x","endpointStatus":"Active","eventTypes":["ping"],
                 "createdOn":"2026-05-04T12:00:00Z","modifiedOn":"2026-05-04T12:00:00Z"
-            }]
+            }],
+            "pageInfo":{"pageIndex":0,"pageSize":100,"totalItems":1,"totalPages":1,"hasMore":false}
         })))
         .mount(&server)
         .await;
@@ -136,9 +139,9 @@ async fn refreshes_token_and_retries_once_on_401() {
         .list_endpoints()
         .await
         .expect("list_endpoints should succeed via retry");
-    let data = r.data.expect("data should be present after retry");
-    assert_eq!(data.len(), 1);
-    assert_eq!(data[0].name.as_deref(), Some("after-refresh"));
+    let items = r.items.expect("items should be present after retry");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].name.as_deref(), Some("after-refresh"));
 
     // Token was fetched twice: once originally, once after the 401 invalidation.
     assert_eq!(
@@ -158,8 +161,8 @@ async fn bodyless_post_sends_content_length_zero() {
         .and(path("/v2/webhooks/endpoints/ep-1/ping"))
         .and(header("content-length", "0"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "success": true,
-            "statusCode": 200,
+            "isDelivered": true,
+            "endpointHTTPResponseCode": 200,
             "roundTripDurationMs": 12,
             "errorMessage": null
         })))

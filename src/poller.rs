@@ -83,7 +83,7 @@ pub fn spawn(
         // One-time fetch of event types — they don't change often
         let event_types = match api.list_event_types().await {
             Ok(v) => v
-                .data
+                .items
                 .unwrap_or_default()
                 .into_iter()
                 .map(EventTypeMeta::from)
@@ -155,7 +155,7 @@ async fn poll_once(api: &ApiClient, event_types: &[EventTypeMeta]) -> Result<Sna
     })?;
 
     let endpoints: Vec<Endpoint> = endpoints_resp
-        .data
+        .items
         .unwrap_or_default()
         .into_iter()
         .map(Endpoint::from)

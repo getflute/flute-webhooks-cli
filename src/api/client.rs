@@ -130,8 +130,25 @@ impl ApiClient {
         }
     }
 
+    /// List webhook endpoints. Sends `pageSize=100` so a single call returns
+    /// the full first page under the server's cap; the current CLI surface
+    /// does not yet page beyond that. `pageInfo.hasMore == true` in the
+    /// response signals a caller with >100 endpoints — a rare tail case a
+    /// follow-up can address by exposing pagination flags on the CLI.
     pub async fn list_endpoints(&self) -> Result<ListWebhookEndpointsDto, ApiError> {
-        self.send(Method::GET, "/v2/webhooks/endpoints", None).await
+        self.list_endpoints_query("?pageSize=100").await
+    }
+
+    /// List webhook endpoints with a pre-built query string (must include
+    /// the leading `?` when non-empty). Used by future filtered queries;
+    /// goes through the shared `send()` helper so 401 retries and
+    /// `from_aspnet` error parsing kick in.
+    pub async fn list_endpoints_query(
+        &self,
+        query: &str,
+    ) -> Result<ListWebhookEndpointsDto, ApiError> {
+        self.send(Method::GET, &format!("/v2/webhooks/endpoints{query}"), None)
+            .await
     }
 
     pub async fn get_endpoint(&self, id: &str) -> Result<GetWebhookEndpointDto, ApiError> {
@@ -149,6 +166,11 @@ impl ApiClient {
             .await
     }
 
+    /// Update an endpoint via JSON Merge Patch. The server accepts PATCH
+    /// (not PUT), and any field absent from `req` is left unchanged
+    /// server-side — the `Option<T>` fields with `skip_serializing_if` on
+    /// `UpdateWebhookEndpointRequest` produce a body containing only the
+    /// keys the caller actually set.
     pub async fn update_endpoint(
         &self,
         id: &str,
@@ -157,7 +179,7 @@ impl ApiClient {
         let body = serde_json::to_value(req)
             .map_err(|e| ApiError::Decode(format!("encode update_endpoint body: {e}")))?;
         self.send(
-            Method::PUT,
+            Method::PATCH,
             &format!("/v2/webhooks/endpoints/{id}"),
             Some(body),
         )

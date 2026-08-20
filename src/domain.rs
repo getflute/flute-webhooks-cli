@@ -74,6 +74,8 @@ pub struct EventTypeMeta {
 impl From<EventTypeDto> for EventTypeMeta {
     fn from(d: EventTypeDto) -> Self {
         Self {
+            // Wire name is `eventType`; Rust field is still `name` for
+            // ergonomic access. Empty string when the server omits it.
             name: d.name.unwrap_or_default(),
             description: d.description.unwrap_or_default(),
             group: d.group.unwrap_or_else(|| "Other".into()),

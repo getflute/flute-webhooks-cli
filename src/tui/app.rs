@@ -213,7 +213,7 @@ pub struct App {
 
     pub filter_endpoint: usize, // 0=All, 1+=index+1
     pub filter_event: usize,
-    pub filter_status: usize, // 0=All, 1=Success, 2=Failure, 3=Pending
+    pub filter_status: usize, // 0=All, 1=Success, 2=Failure
     pub sort_ascending: bool,
 
     pub toast_message: Option<String>,
@@ -595,7 +595,7 @@ impl App {
                 AppAction::None
             }
             KeyCode::Char('3') => {
-                self.filter_status = (self.filter_status + 1) % 4;
+                self.filter_status = (self.filter_status + 1) % 3;
                 self.selected_log = 0;
                 AppAction::None
             }
@@ -731,7 +731,6 @@ impl App {
                 match self.filter_status {
                     1 => log.status == WebhookDeliveryLogStatus::Success,
                     2 => log.status == WebhookDeliveryLogStatus::Failure,
-                    3 => log.status == WebhookDeliveryLogStatus::Pending,
                     _ => true,
                 }
             })
@@ -874,13 +873,17 @@ impl App {
                     return AppAction::None;
                 };
                 let id = ep.id.clone();
+                // TUI edit-form collects all four fields; wrap each in Some(_)
+                // so the PATCH body carries the complete new state. Absent
+                // wrapping would send a body-less PATCH that leaves fields
+                // unchanged server-side.
                 AppAction::Update(
                     id,
                     crate::api::models::UpdateWebhookEndpointRequest {
-                        name,
-                        endpoint_url: self.form.url.clone(),
-                        status: self.form.status,
-                        event_types: selected,
+                        name: Some(name),
+                        endpoint_url: Some(self.form.url.clone()),
+                        status: Some(self.form.status),
+                        event_types: Some(selected),
                     },
                 )
             }

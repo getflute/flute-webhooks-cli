@@ -27,7 +27,15 @@ async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand
     match cmd {
         EndpointsCommand::List => {
             let resp = api.list_endpoints().await.context("list endpoints")?;
-            let data = resp.data.unwrap_or_default();
+            // JSON path mirrors the server envelope so agents get
+            // `{ items, pageInfo }` — matches the wire and lets MCP consumers
+            // detect `pageInfo.hasMore` for follow-up pagination work.
+            if fmt == OutputFormat::Json {
+                let s = serde_json::to_string_pretty(&resp)?;
+                println!("{s}");
+                return Ok(());
+            }
+            let data = resp.items.unwrap_or_default();
             output::print_endpoints(&data, fmt)
         }
         EndpointsCommand::Get { id } => {
@@ -63,14 +71,14 @@ async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand
                 if let Some(types) = &resp.event_types {
                     println!("Events:    {}", types.join(", "));
                 }
-                if let Some(t) = resp.created_at {
+                if let Some(t) = resp.created_on {
                     println!("Created:   {t}");
                 }
                 println!();
                 println!("⚠ Save the signing secret now — it will not be shown again.");
                 println!(
                     "Secret:    {}",
-                    resp.secret.as_deref().unwrap_or("(none returned)")
+                    resp.hmac_secret.as_deref().unwrap_or("(none returned)")
                 );
             }
             Ok(())
@@ -82,27 +90,20 @@ async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand
             name,
             status,
         } => {
-            // Get-merge-put: GET the current state, overlay only the supplied
-            // flags, PUT the merged version. Avoids accidentally clearing
-            // event_types when the user only wanted to rename.
-            let current = api
-                .get_endpoint(&id)
-                .await
-                .with_context(|| format!("get endpoint {id}"))?;
-            let merged = UpdateWebhookEndpointRequest {
-                name: name.unwrap_or_else(|| current.name.clone().unwrap_or_default()),
-                endpoint_url: url
-                    .unwrap_or_else(|| current.endpoint_url.clone().unwrap_or_default()),
-                status: match status {
-                    Some(EndpointStatusArg::Active) => WebhookEndpointStatus::Active,
-                    Some(EndpointStatusArg::Inactive) => WebhookEndpointStatus::Inactive,
-                    None => current.status,
-                },
-                event_types: events
-                    .unwrap_or_else(|| current.event_types.clone().unwrap_or_default()),
+            // JSON Merge Patch (RFC 7396): send only the fields the user
+            // provided. Everything else stays untouched server-side — no more
+            // GET-first-then-PUT roundtrip.
+            let patch = UpdateWebhookEndpointRequest {
+                name,
+                endpoint_url: url,
+                status: status.map(|s| match s {
+                    EndpointStatusArg::Active => WebhookEndpointStatus::Active,
+                    EndpointStatusArg::Inactive => WebhookEndpointStatus::Inactive,
+                }),
+                event_types: events,
             };
             let resp = api
-                .update_endpoint(&id, &merged)
+                .update_endpoint(&id, &patch)
                 .await
                 .with_context(|| format!("update endpoint {id}"))?;
             output::print_endpoint(&resp, fmt)
@@ -146,11 +147,11 @@ async fn run_event_types(api: &ApiClient, fmt: OutputFormat, cmd: EventTypesComm
     match cmd {
         EventTypesCommand::List => {
             let resp = api.list_event_types().await.context("list event types")?;
-            let dtos = resp.data.unwrap_or_default();
+            let dtos = resp.items.unwrap_or_default();
             // JSON path serializes the wire DTOs directly so consumers see
-            // the same field names (incl. `eventTypeId`) as the underlying
-            // API. The table path uses the trimmed `EventTypeMeta` domain
-            // type which is also what the TUI consumes.
+            // the same field names (`eventType`, `description`, `group`) as
+            // the underlying API. The table path uses the trimmed
+            // `EventTypeMeta` domain type which is also what the TUI consumes.
             if fmt == OutputFormat::Json {
                 let s = serde_json::to_string_pretty(&dtos)?;
                 println!("{s}");
@@ -177,27 +178,18 @@ async fn run_deliveries(api: &ApiClient, fmt: OutputFormat, cmd: DeliveriesComma
                 .list_delivery_logs_query(&query)
                 .await
                 .context("list deliveries")?;
-            let items_dto = resp.items.unwrap_or_default();
-            // JSON path serializes the wire DTOs directly so each `items[N]`
-            // uses the same field names (`deliveryLogId`, `deliveryAttemptStatus`,
-            // `roundTripDurationMs`, etc.) as `webhooks deliveries get`. The
-            // table path goes through the trimmed `DeliveryLog` domain type
-            // shared with the TUI.
+            // JSON path mirrors the server envelope so `deliveries list` and
+            // `deliveries get` share field paths (`deliveryLogId`,
+            // `deliveryLogStatus`, `endpointHTTPResponseCode`,
+            // `roundTripDurationMs`, …) and `pageInfo` for pagination.
             if fmt == OutputFormat::Json {
-                #[derive(serde::Serialize)]
-                struct Wrapper<'a> {
-                    items: &'a [crate::api::models::DeliveryLogSummaryDto],
-                    total: Option<i32>,
-                }
-                let s = serde_json::to_string_pretty(&Wrapper {
-                    items: &items_dto,
-                    total: resp.total,
-                })?;
+                let s = serde_json::to_string_pretty(&resp)?;
                 println!("{s}");
                 return Ok(());
             }
+            let items_dto = resp.items.unwrap_or_default();
             let logs: Vec<DeliveryLog> = items_dto.into_iter().map(DeliveryLog::from).collect();
-            output::print_delivery_logs(&logs, resp.total, fmt)
+            output::print_delivery_logs(&logs, resp.page_info.total_items, fmt)
         }
         DeliveriesCommand::Get { id } => {
             let detail = api
@@ -224,10 +216,10 @@ async fn run_deliveries(api: &ApiClient, fmt: OutputFormat, cmd: DeliveriesComma
     }
 }
 
-/// Build the `?pageSize=…&webhookId=…&status=…` query for the deliveries list.
-///
-/// Post-2026-06 rebrand the server expects `pageSize` (not `limit`) to cap
-/// the response. The CLI flag is still `--limit` for historical ergonomics.
+/// Build the `?pageSize=…&endpointId=…&deliveryLogStatus=…` query for the
+/// deliveries list. Query-param names track the ARISE-4204 spec: `endpointId`
+/// (was `webhookId`), `deliveryLogStatus` (was `status`). The CLI's own
+/// `--limit` flag is still historical ergonomics.
 fn build_deliveries_query(
     endpoint_id: Option<&str>,
     status: Option<DeliveryStatusArg>,
@@ -236,15 +228,14 @@ fn build_deliveries_query(
     let mut parts: Vec<String> = Vec::new();
     parts.push(format!("pageSize={limit}"));
     if let Some(id) = endpoint_id {
-        parts.push(format!("webhookId={id}"));
+        parts.push(format!("endpointId={id}"));
     }
     if let Some(s) = status {
         let v = match s {
             DeliveryStatusArg::Success => "Success",
             DeliveryStatusArg::Failed => "Failure",
-            DeliveryStatusArg::Pending => "Pending",
         };
-        parts.push(format!("status={v}"));
+        parts.push(format!("deliveryLogStatus={v}"));
     }
     if parts.is_empty() {
         String::new()
@@ -263,16 +254,11 @@ mod tests {
         assert_eq!(q, "?pageSize=25");
 
         let q = build_deliveries_query(Some("ep-1"), Some(DeliveryStatusArg::Success), 100);
-        assert_eq!(q, "?pageSize=100&webhookId=ep-1&status=Success");
+        assert_eq!(q, "?pageSize=100&endpointId=ep-1&deliveryLogStatus=Success");
 
         // The API uses "Failure" (PascalCase) for the failed status value,
         // even though we expose `--status failed` for nicer ergonomics.
         let q = build_deliveries_query(None, Some(DeliveryStatusArg::Failed), 1);
-        assert_eq!(q, "?pageSize=1&status=Failure");
-
-        // Pending = in-flight retry; goes on the wire as the title-case
-        // status value the server returns.
-        let q = build_deliveries_query(None, Some(DeliveryStatusArg::Pending), 1);
-        assert_eq!(q, "?pageSize=1&status=Pending");
+        assert_eq!(q, "?pageSize=1&deliveryLogStatus=Failure");
     }
 }

@@ -229,7 +229,6 @@ fn render_logs(frame: &mut Frame, app: &App, area: Rect) {
             let (text, color) = match log.status {
                 WebhookDeliveryLogStatus::Success => ("Success", Color::Green),
                 WebhookDeliveryLogStatus::Failure => ("Failed", Color::Red),
-                WebhookDeliveryLogStatus::Pending => ("Pending", Color::Yellow),
             };
             let http = log
                 .response_status_code
@@ -239,9 +238,6 @@ fn render_logs(frame: &mut Frame, app: &App, area: Rect) {
                 (WebhookDeliveryLogStatus::Success, true) => "[v]iew [t]rig",
                 (WebhookDeliveryLogStatus::Success, false) => "[v]iew",
                 (WebhookDeliveryLogStatus::Failure, _) => "[v]iew [r]etry",
-                // Pending is an in-flight retry — no manual action makes sense
-                // until the server resolves it to Success or Failure.
-                (WebhookDeliveryLogStatus::Pending, _) => "[v]iew",
             };
             let row = Row::new(vec![
                 Cell::from(log.created_on.format("%m/%d/%y %H:%M:%S").to_string()),
@@ -306,7 +302,6 @@ fn status_filter_label(app: &App) -> &'static str {
     match app.filter_status {
         1 => "Success",
         2 => "Failed",
-        3 => "Pending",
         _ => "All",
     }
 }
