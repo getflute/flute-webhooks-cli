@@ -107,10 +107,17 @@ impl Fetcher for OAuth2Fetcher {
                 format_oauth_error(status, &body)
             ));
         }
+        // Deliberately do NOT include the response body in this error. A 200
+        // response that carries `access_token` but is otherwise malformed
+        // (missing / non-integer `expires_in`, wrong `token_type`, …) would
+        // leak the bearer token into stderr, `--output json`, log files, and
+        // CI artifacts if we surfaced the body. The serde error path alone
+        // tells the user *which* field failed to parse without exposing the
+        // credential.
         let parsed: TokenResp = serde_json::from_str(&body).map_err(|e| {
             anyhow::anyhow!(
-                "OAuth token response was not the expected shape ({e}); body was: {}",
-                truncate_for_log(&body)
+                "OAuth token response was not the expected shape ({e}); \
+                 body suppressed to avoid leaking a returned bearer token"
             )
         })?;
         Ok((parsed.access_token, Duration::from_secs(parsed.expires_in)))
@@ -300,6 +307,48 @@ mod tests {
         assert!(
             msg.contains("bad gateway"),
             "must include a bounded body snippet: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn oauth2_fetcher_never_leaks_bearer_token_on_malformed_success() {
+        // Regression: a previous revision of `fetch()` included the raw body
+        // in the decode-error message when a 200 response was missing a
+        // required field. That path would surface the bearer token to
+        // stderr / --output json / logs / CI artifacts.
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
+        let server = MockServer::start().await;
+        // A syntactically valid JSON body carrying an `access_token` but
+        // missing `expires_in`. Serde will fail to decode into `TokenResp`.
+        let leaky_token = "leaky.bearer.token.that.must.not.appear.in.errors";
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": leaky_token,
+                "token_type": "Bearer"
+            })))
+            .mount(&server)
+            .await;
+
+        let fetcher = OAuth2Fetcher {
+            oauth_url: format!("{}/oauth2/token", server.uri()),
+            client_id: "id".into(),
+            client_secret: "secret".into(),
+            http: reqwest::Client::new(),
+        };
+        let err = fetcher.fetch().await.unwrap_err();
+        let msg = format!("{err:?}"); // Debug shows the whole anyhow chain.
+        assert!(
+            !msg.contains(leaky_token),
+            "bearer token leaked into error message: {msg}"
+        );
+        assert!(
+            !msg.contains("access_token"),
+            "even the field name would betray the token slot; got: {msg}"
+        );
+        // The user still needs a signal something is wrong.
+        assert!(
+            msg.contains("not the expected shape") || msg.contains("expires_in"),
+            "must still describe the parse failure: {msg}"
         );
     }
 
