@@ -88,18 +88,27 @@ A case-insensitive comparison handles `success ↔ Success` but NOT `failed ↔ 
 
 The Flute server caps `pageSize` at **100**. The CLI accepts `--limit N` up to any value, but anything > 100 returns `{ "kind": "api", "status": 400, "message": "Validation failed: PageSize must be 100 or less." }`. Agents that want more than 100 rows currently need to call `deliveries list` in pages using an updated CLI that surfaces `pageIndex` — the v0.7.0 CLI does not yet expose it (`--limit` maps to `pageSize` only; page index defaults to 0). Use `pageInfo.hasMore` to detect the tail.
 
-### Event-type catalog additions (v0.7.0)
+### Event-type catalog additions
 
-`payment_session.created` and `payment_session.completed` (group: `Payment Sessions`) were added by ARISE-3639. Subscribe like any other event:
+Both cohorts of new events use the same reference-only delivered envelope: `{ id, data.object.{id, resourceType}, type, created, apiVersion }`. The receiver refetches the resource by its id for the full outcome. The Flute server emits that envelope to your endpoint — this CLI is not involved in the delivery, only in subscription management.
+
+| Added in | Event type | Group | Refetch endpoint |
+|---|---|---|---|
+| ARISE-3639 (v0.7.0) | `payment_session.created` | Payment Sessions | `GET /v2/payment-sessions/{id}` |
+| ARISE-3639 (v0.7.0) | `payment_session.completed` | Payment Sessions | `GET /v2/payment-sessions/{id}` |
+| ARISE-4501 (v0.7.2) | `payment_link.created` | Payment Links | `GET /v2/payment-links/{id}` |
+| ARISE-4501 (v0.7.2) | `payment_link.updated` | Payment Links | `GET /v2/payment-links/{id}` |
+
+Subscribe like any other event:
 
 ```bash
 flute-webhooks webhooks endpoints create \
   --url https://example.com/hook \
-  --events payment_session.created,payment_session.completed \
-  --name "Checkout listener"
+  --events payment_session.completed,payment_link.created,payment_link.updated \
+  --name "Checkout + links listener"
 ```
 
-Delivered payload envelope (what your receiver sees) is `{ id, data.object.{id, resourceType}, type, created, apiVersion }` — reference-only; refetch `GET /v2/payment-sessions/{id}` for the full outcome. That envelope is emitted by the Flute server to your endpoint, not by this CLI.
+Note on payment-link paid flows (per the ARISE-4501 PR): a paid **single-use** link flips to `Completed` **without** emitting `payment_link.updated` — the status change is a consequence of payment and is already announced via the corresponding `payment_session.completed` and `transaction.*` webhooks. Session→link linkage is resolvable server-side via `paymentLinkId` on the payment session; transaction→link linkage via `source.sourceId` on the transaction.
 
 ### Failure (under `--output json`)
 
@@ -172,7 +181,8 @@ A bearer token is fetched automatically from `oauth_url` on demand, cached for t
 | "Inspect a specific delivery's payload" | `webhooks deliveries get <id>` | |
 | "Re-send a failed delivery" | `webhooks deliveries retry <id>` | Skip ping-event deliveries — server rejects them. |
 | "What event types can I subscribe to?" | `webhooks event-types list` | Bare array of `{eventType, description, group}` objects. Match subscriptions by the `eventType` string. |
-| "Subscribe to checkout completion" | `webhooks endpoints create --url <URL> --events payment_session.completed,payment_session.created …` | New in the ARISE-3639 catalog; group is `Payment Sessions`. |
+| "Subscribe to checkout completion" | `webhooks endpoints create --url <URL> --events payment_session.completed,payment_session.created …` | Added by ARISE-3639 (v0.7.0); group is `Payment Sessions`. |
+| "Subscribe to payment-link lifecycle" | `webhooks endpoints create --url <URL> --events payment_link.created,payment_link.updated …` | Added by ARISE-4501 (v0.7.2); group is `Payment Links`. Paid single-use links do not fire `payment_link.updated` — surface via `payment_session.completed` + `transaction.*`. |
 
 ## Things to avoid
 
