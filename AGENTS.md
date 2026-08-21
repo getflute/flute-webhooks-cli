@@ -131,7 +131,7 @@ Branch on `kind` first, then `status` for retry/backoff decisions:
 - `"transport"` → connection failure; retry with backoff.
 - `"auth"` → keychain or OAuth handshake failed; needs operator intervention (no credentials configured).
 - `"decode"` → bug in this CLI or a server contract change; surface for investigation.
-- `"client"` → bad CLI args (clap parse failure), unknown profile, or a CLI-side precondition that fired before any HTTP request — currently the only such precondition is `endpoints create` rejecting an empty `--events` list. The CLI does **not** locally validate UUID format, HTTPS URL shape, or "retryable" delivery status — those checks happen server-side and surface as `kind:"api"` with the server's validation `message`. Treat `kind:"client"` as a programming error in the agent's invocation; `kind:"api"` carries the operator-actionable diagnostic.
+- `"client"` → bad CLI args (clap parse failure), unknown profile, or a CLI-side precondition that fired before any HTTP request. Current preconditions: `endpoints create` rejects an empty `--events` list, and `endpoints delete` requires `--yes` under `--output json` or when stdin is not a TTY (an interactive prompt would corrupt the JSON stream or hang a headless caller). The CLI does **not** locally validate UUID format, HTTPS URL shape, or "retryable" delivery status — those checks happen server-side and surface as `kind:"api"` with the server's validation `message`. Treat `kind:"client"` as a programming error in the agent's invocation; `kind:"api"` carries the operator-actionable diagnostic.
 
 ## Idempotency
 

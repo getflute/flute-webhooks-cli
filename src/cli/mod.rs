@@ -123,9 +123,9 @@ pub enum EndpointsCommand {
         name: Option<String>,
     },
 
-    /// Update an existing endpoint. Each flag is optional — omitted fields
-    /// keep their current value (we GET the current state first, merge the
-    /// supplied flags, and PUT the merged version).
+    /// Update an existing endpoint. Each flag is optional. The CLI sends a
+    /// sparse RFC 7396 JSON Merge Patch containing only the fields you
+    /// supplied; every other field is left unchanged server-side.
     Update {
         id: String,
 
@@ -142,11 +142,13 @@ pub enum EndpointsCommand {
         status: Option<EndpointStatusArg>,
     },
 
-    /// Delete an endpoint. Refuses without `--yes` to prevent accidents.
+    /// Delete an endpoint. Without `--yes`, prompts interactively (table
+    /// mode + TTY stdin) or refuses (JSON mode, or when stdin is not a TTY).
     Delete {
         id: String,
 
-        /// Skip the interactive confirmation prompt.
+        /// Skip the interactive confirmation prompt. Required under
+        /// `--output json` and any non-TTY stdin (piped input, CI, MCP).
         #[arg(long)]
         yes: bool,
     },
