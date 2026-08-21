@@ -191,6 +191,29 @@ async fn endpoints_delete_with_yes_issues_delete() {
 }
 
 #[tokio::test]
+async fn endpoints_delete_without_yes_under_json_refuses_before_hitting_server() {
+    // Guards the B2 blocker: an interactive prompt would corrupt the JSON
+    // stream and hang non-interactive callers. The dispatcher must reject
+    // before the mock server is even consulted — no `.expect(1)` on a
+    // DELETE mock, so a wrong flow would show up as an unmatched request.
+    let api = client("http://unused".into());
+    let r = webhooks::run(
+        &api,
+        OutputFormat::Json,
+        WebhooksCommand::Endpoints(EndpointsCommand::Delete {
+            id: "ep-1".into(),
+            yes: false,
+        }),
+    )
+    .await;
+    let msg = format!("{}", r.unwrap_err());
+    assert!(
+        msg.contains("`--yes` is required"),
+        "expected --yes requirement, got: {msg}"
+    );
+}
+
+#[tokio::test]
 async fn endpoints_ping_returns_listener_response() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

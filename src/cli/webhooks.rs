@@ -110,9 +110,32 @@ async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand
         }
         EndpointsCommand::Delete { id, yes } => {
             if !yes {
-                use std::io::{self, BufRead, Write};
-                print!("Delete endpoint {id}? Type 'yes' to confirm: ");
-                io::stdout().flush().ok();
+                // `--output json` + interactive prompt is a contradiction: the
+                // prompt would corrupt the JSON stream and the read would hang
+                // any non-interactive caller. Refuse before hitting stdin.
+                if fmt == OutputFormat::Json {
+                    return Err(anyhow!(
+                        "delete endpoint {id}: `--yes` is required under `--output json` \
+                         (an interactive confirmation prompt would corrupt the JSON stream)"
+                    ));
+                }
+                use std::io::{self, BufRead, IsTerminal, Write};
+                // Non-TTY stdin means piped input or a headless caller — a
+                // blocking `read_line` on `<<< ""` returns EOF and treats it
+                // as "not yes", but a blocking `read_line` under `sh -c '...' <
+                // /dev/null` also has surprising behaviour on some shells.
+                // Requiring `--yes` in that case is the correct contract.
+                if !io::stdin().is_terminal() {
+                    return Err(anyhow!(
+                        "delete endpoint {id}: `--yes` is required when stdin is not a TTY \
+                         (no way to prompt for confirmation)"
+                    ));
+                }
+                // Prompt on stderr so `flute-webhooks … delete … > out.txt`
+                // still shows it to the operator instead of writing it to the
+                // redirected file.
+                eprint!("Delete endpoint {id}? Type 'yes' to confirm: ");
+                io::stderr().flush().ok();
                 let mut line = String::new();
                 io::stdin()
                     .lock()
@@ -127,7 +150,13 @@ async fn run_endpoints(api: &ApiClient, fmt: OutputFormat, cmd: EndpointsCommand
                 .await
                 .with_context(|| format!("delete endpoint {id}"))?;
             if fmt == OutputFormat::Json {
-                println!(r#"{{"deleted":"{id}"}}"#);
+                // Serialise via serde_json so a hostile / pasted id containing
+                // `"` or `\` produces a well-formed envelope instead of
+                // corrupt JSON that agents can't parse.
+                println!(
+                    "{}",
+                    serde_json::to_string(&serde_json::json!({ "deleted": id }))?
+                );
             } else {
                 println!("Deleted endpoint {id}.");
             }

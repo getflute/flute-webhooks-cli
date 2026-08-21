@@ -139,7 +139,7 @@ Branch on `kind` first, then `status` for retry/backoff decisions:
 |---|---|---|
 | `endpoints list` / `get` | yes | pure read |
 | `endpoints create` | **no** | duplicates create a second endpoint. Check `list` first if recovering from an ambiguous timeout. |
-| `endpoints update` | yes | full-state PUT — the CLI re-GETs, merges, and re-PUTs every call. |
+| `endpoints update` | yes | PATCH with a JSON Merge Patch (RFC 7396) body containing only user-supplied fields; the server merges. Repeated calls converge on the same state — safe to retry after an ambiguous timeout. |
 | `endpoints delete` | yes, with caveat | The first call returns 204 + `{"deleted":"<id>"}`. A second call against the same id surfaces `kind:"api"` `status:404` — the CLI does **not** swallow the 404 into a success. Agents that want at-least-once idempotency should branch: treat `kind:"api"` + `status:404` on a delete as already-gone. |
 | `endpoints ping` | yes | one-shot HTTP test, no side effect on Flute. |
 | `event-types list` | yes | pure read |
