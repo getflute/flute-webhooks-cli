@@ -131,7 +131,7 @@ Branch on `kind` first, then `status` for retry/backoff decisions:
 - `"transport"` → connection failure; retry with backoff.
 - `"auth"` → keychain or OAuth handshake failed; needs operator intervention (no credentials configured).
 - `"decode"` → bug in this CLI or a server contract change; surface for investigation.
-- `"client"` → bad CLI args (clap parse failure), unknown profile, or a CLI-side precondition that fired before any HTTP request — currently the only such precondition is `endpoints create` rejecting an empty `--events` list. The CLI does **not** locally validate UUID format, HTTPS URL shape, or "retryable" delivery status — those checks happen server-side and surface as `kind:"api"` with the server's validation `message`. Treat `kind:"client"` as a programming error in the agent's invocation; `kind:"api"` carries the operator-actionable diagnostic.
+- `"client"` → bad CLI args (clap parse failure), unknown profile, or a CLI-side precondition that fired before any HTTP request. Current preconditions: `endpoints create` rejects an empty `--events` list, and `endpoints delete` requires `--yes` under `--output json` or when stdin is not a TTY (an interactive prompt would corrupt the JSON stream or hang a headless caller). The CLI does **not** locally validate UUID format, HTTPS URL shape, or "retryable" delivery status — those checks happen server-side and surface as `kind:"api"` with the server's validation `message`. Treat `kind:"client"` as a programming error in the agent's invocation; `kind:"api"` carries the operator-actionable diagnostic.
 
 ## Idempotency
 
@@ -139,7 +139,7 @@ Branch on `kind` first, then `status` for retry/backoff decisions:
 |---|---|---|
 | `endpoints list` / `get` | yes | pure read |
 | `endpoints create` | **no** | duplicates create a second endpoint. Check `list` first if recovering from an ambiguous timeout. |
-| `endpoints update` | yes | full-state PUT — the CLI re-GETs, merges, and re-PUTs every call. |
+| `endpoints update` | yes | PATCH with a JSON Merge Patch (RFC 7396) body containing only user-supplied fields; the server merges. Repeated calls converge on the same state — safe to retry after an ambiguous timeout. |
 | `endpoints delete` | yes, with caveat | The first call returns 204 + `{"deleted":"<id>"}`. A second call against the same id surfaces `kind:"api"` `status:404` — the CLI does **not** swallow the 404 into a success. Agents that want at-least-once idempotency should branch: treat `kind:"api"` + `status:404` on a delete as already-gone. |
 | `endpoints ping` | yes | one-shot HTTP test, no side effect on Flute. |
 | `event-types list` | yes | pure read |

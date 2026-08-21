@@ -304,16 +304,22 @@ async fn auth_login(profile: &str) -> anyhow::Result<()> {
 }
 
 async fn auth_print_keys(profile: &str) -> anyhow::Result<()> {
+    use std::time::Duration;
     let p = config::Profile::by_name(profile)
         .ok_or_else(|| anyhow::anyhow!("unknown profile: {profile}"))?;
     let (id, secret) = auth::keychain::load_with_env_fallback(profile)?.ok_or_else(|| {
         anyhow::anyhow!("no credentials for [{profile}]; run `flute-webhooks auth login`")
     })?;
+    // 15 s timeout on the OAuth exchange — without one, a hung upstream leaves
+    // `flute-webhooks auth keys` blocked forever with no signal.
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()?;
     let fetcher = std::sync::Arc::new(auth::token::OAuth2Fetcher {
         oauth_url: p.oauth_url,
         client_id: id,
         client_secret: secret,
-        http: reqwest::Client::new(),
+        http,
     });
     let store = auth::token::TokenStore::new(fetcher);
     let bearer = store.bearer().await?;
