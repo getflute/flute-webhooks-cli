@@ -43,18 +43,27 @@ Every documented Webhook API call is reachable from both modes:
 
 Pick whichever installer matches your platform — each one drops a `flute-webhooks` binary on your `PATH` plus an install receipt that the in-app `update` command reads when checking for new versions.
 
-```bash
-# macOS / Linux (curl + sh)
-curl -LsSf https://github.com/getflute/flute-webhooks-cli/releases/latest/download/flute-webhooks-cli-installer.sh | sh
+**Homebrew (Apple Silicon macOS / x86_64 Linux)**
 
-# macOS / Linux (Homebrew)
+```sh
 brew install getflute/flute-webhooks-cli/flute-webhooks-cli
-
-# Windows (PowerShell)
-irm https://github.com/getflute/flute-webhooks-cli/releases/latest/download/flute-webhooks-cli-installer.ps1 | iex
 ```
 
-Installers, archives, and SHA-256 sums are produced by [`cargo-dist`](https://opensource.axo.dev/cargo-dist/) on every `v*` tag and attached to the [GitHub Release page](https://github.com/getflute/flute-webhooks-cli/releases). Build targets: macOS Apple Silicon, Linux x86_64, Windows x86_64.
+**Shell script (Apple Silicon macOS / x86_64 Linux — installs from GitHub Releases)**
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/getflute/flute-webhooks-cli/releases/latest/download/flute-webhooks-cli-installer.sh | sh
+```
+
+**PowerShell (x86_64 Windows — installs from GitHub Releases)**
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/getflute/flute-webhooks-cli/releases/latest/download/flute-webhooks-cli-installer.ps1 | iex"
+```
+
+To build it yourself instead, see [Build from source](#build-from-source).
+
+Installers, archives, and SHA-256 sums are produced by [`cargo-dist`](https://opensource.axo.dev/cargo-dist/) on every `v*` tag and attached to the [GitHub Release page](https://github.com/getflute/flute-webhooks-cli/releases).
 
 ## Build from source
 
