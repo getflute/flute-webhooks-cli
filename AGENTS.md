@@ -13,7 +13,7 @@ flute-webhooks auth login                       # interactive prompt — not age
 flute-webhooks --output json webhooks endpoints list
 ```
 
-Every non-TUI subcommand accepts `--output json`. For `webhooks …` subcommands, success emits pretty-printed JSON on **stdout** (per-command shape listed below; `auth keys` and `update` are text-only — see the table). On failure a structured error envelope (see below) is printed to **stdout** and the process exits non-zero — agents parse one stream, never both.
+Every non-TUI subcommand accepts `--output json`. For `webhooks …` subcommands, success emits pretty-printed JSON on **stdout** (per-command shape listed below; `auth keys`, `auth logout`, and `update` are text-only — see the table). On failure a structured error envelope (see below) is printed to **stdout** and the process exits non-zero — agents parse one stream, never both.
 
 > **v0.7.0 note.** The Flute v2 webhooks surface underwent a spec-conformance pass (ARISE-4204 / -4321 / -4319) that renamed most wire fields and moved both `endpoints list` and `deliveries list` onto a paginated `{ items, pageInfo }` envelope. If you have code targeting v0.6.x, see the "Migration from v0.6.x" section at the bottom before parsing.
 
@@ -34,6 +34,7 @@ Every non-TUI subcommand accepts `--output json`. For `webhooks …` subcommands
 | `webhooks deliveries get <id>` | `DeliveryLogDetailDto` (full request + response bodies) |
 | `webhooks deliveries retry <id>` | `DeliveryLogDetailDto` — the same shape as `deliveries get`. HTTP 200. Represents the new delivery attempt's log record with full request + response bodies. |
 | `auth keys` | bearer JWT as a single line of text — useful for `curl` smoke tests, not JSON. `auth token` is a deprecated hidden alias that still works. |
+| `auth logout` | text confirmation that the selected profile's credentials were removed from the OS keychain (also under `--output json`); exit 0 even if already absent. Failures under `--output json` use the standard error envelope with `kind:"auth"`. |
 | `update` | text status line; exit 0 = up-to-date or updated successfully |
 
 Field types are defined in [`src/api/models.rs`](src/api/models.rs).
@@ -137,6 +138,7 @@ Branch on `kind` first, then `status` for retry/backoff decisions:
 
 | Subcommand | Safe to retry? | Notes |
 |---|---|---|
+| `auth logout` | yes | Deletes this app's current and legacy keychain entries for the selected profile; missing entries are success. |
 | `endpoints list` / `get` | yes | pure read |
 | `endpoints create` | **no** | duplicates create a second endpoint. Check `list` first if recovering from an ambiguous timeout. |
 | `endpoints update` | yes | PATCH with a JSON Merge Patch (RFC 7396) body containing only user-supplied fields; the server merges. Repeated calls converge on the same state — safe to retry after an ambiguous timeout. |
@@ -160,6 +162,8 @@ flute-webhooks --output json webhooks endpoints list
 These env vars are checked by `auth::keychain::load_with_env_fallback` before the keychain. They're the recommended path for any non-interactive caller (CI, agent runtime, container). The keychain path requires an interactive `auth login` first and depends on platform-specific session state — fragile for agents.
 
 A bearer token is fetched automatically from `oauth_url` on demand, cached for the advertised TTL (minus a 60 s safety margin), and refreshed once on a 401. The agent does not see or need to handle tokens directly.
+
+Use `flute-webhooks auth logout` (or `--profile production auth logout`) to remove saved keychain credentials for the selected profile. Other profiles and the sibling `flute-cli` keychain entries are unaffected. Environment variables are not cleared: unset `FLUTE_CLIENT_ID` and `FLUTE_CLIENT_SECRET` in the calling environment to stop using env-based authentication. Logout does not revoke issued tokens or end running sessions.
 
 ## Profiles and global flags
 

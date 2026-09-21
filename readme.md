@@ -101,6 +101,15 @@ flute-webhooks auth keys
 
 Prints the current bearer JWT (useful for `curl` smoke tests). `auth token` still works as a deprecated alias; new scripts should use `auth keys`.
 
+To log out, remove the saved credentials for the selected profile:
+
+```bash
+flute-webhooks auth logout
+flute-webhooks --profile production auth logout
+```
+
+Logout removes the profile's current and legacy entries from this application's OS keychain storage. It succeeds even if no credentials are saved and prints a text confirmation. Other profiles and `flute-cli` credentials are unaffected. If you use `FLUTE_CLIENT_ID` and `FLUTE_CLIENT_SECRET`, unset them in your shell too; environment credentials still take precedence. Logout does not revoke tokens already issued or end running sessions.
+
 ### 3. Use it
 
 **Interactive (TUI):**

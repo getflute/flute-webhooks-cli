@@ -9,6 +9,9 @@ pub mod tui;
 pub mod update;
 pub mod update_check;
 
+#[cfg(test)]
+mod logout_tests;
+
 use clap::{CommandFactory, Parser};
 use std::io::IsTerminal;
 use std::sync::Mutex;
@@ -60,6 +63,7 @@ pub fn run() -> anyhow::Result<()> {
         let dispatch_result = match cmd {
             cli::Command::Tui => tui::run(&profile, pending_tui_notice).await,
             cli::Command::Auth(cli::AuthCommand::Login) => auth_login(&profile).await,
+            cli::Command::Auth(cli::AuthCommand::Logout) => auth_logout(&profile),
             cli::Command::Auth(cli::AuthCommand::Keys) => auth_print_keys(&profile).await,
             cli::Command::Listen { forward_to } => listen(&profile, &forward_to).await,
             cli::Command::Webhooks(c) => run_webhooks(&profile, output_fmt, c).await,
@@ -300,6 +304,13 @@ async fn auth_login(profile: &str) -> anyhow::Result<()> {
 
     auth::keychain::store_client_credentials(profile, &id, &secret)?;
     println!("Stored credentials for profile [{profile}] in OS keychain.");
+    Ok(())
+}
+
+fn auth_logout(profile: &str) -> anyhow::Result<()> {
+    auth::keychain::delete_client_credentials(profile)
+        .map_err(|err| api::error::ApiError::Auth(format!("{err:#}")))?;
+    println!("Credentials for profile [{profile}] removed from OS keychain.");
     Ok(())
 }
 

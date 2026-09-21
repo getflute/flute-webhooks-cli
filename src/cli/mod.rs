@@ -76,6 +76,9 @@ pub enum AuthCommand {
     /// Prompt for client_id + client_secret and store them in the OS keychain.
     Login,
 
+    /// Clear stored credentials for the active profile.
+    Logout,
+
     /// Print the current bearer token (debugging aid).
     ///
     /// `token` is accepted as a deprecated hidden alias for backward
@@ -203,6 +206,38 @@ pub enum DeliveryStatusArg {
 mod tests {
     use super::*;
     use clap::Parser;
+
+    #[test]
+    fn auth_logout_accepts_global_options_before_and_after_subcommand() {
+        for args in [
+            vec![
+                "flute-webhooks",
+                "--profile",
+                "production",
+                "--output",
+                "json",
+                "auth",
+                "logout",
+            ],
+            vec![
+                "flute-webhooks",
+                "auth",
+                "logout",
+                "--profile",
+                "production",
+                "--output",
+                "json",
+            ],
+        ] {
+            let parsed = Cli::try_parse_from(args).unwrap();
+            assert!(matches!(
+                parsed.command,
+                Some(Command::Auth(AuthCommand::Logout))
+            ));
+            assert_eq!(parsed.profile, "production");
+            assert_eq!(parsed.output, OutputFormat::Json);
+        }
+    }
 
     /// `auth keys` is the primary form; `auth token` is a deprecated hidden
     /// alias that must continue to resolve to the same variant so existing
