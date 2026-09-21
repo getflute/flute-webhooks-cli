@@ -130,6 +130,12 @@ impl ApiClient {
         }
     }
 
+    /// Check API authentication and return the server's identity information.
+    /// This is the same read-only ping used by `flute-cli auth status`.
+    pub async fn ping(&self) -> Result<serde_json::Value, ApiError> {
+        self.send(Method::GET, "/pay-int-api/ping", None).await
+    }
+
     /// List webhook endpoints. Sends `pageSize=100` so a single call returns
     /// the full first page under the server's cap; the current CLI surface
     /// does not yet page beyond that. `pageInfo.hasMore == true` in the

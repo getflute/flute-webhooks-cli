@@ -2,7 +2,7 @@
 
 A Rust CLI **and** terminal UI for working with Flute webhooks: manage endpoints, watch delivery logs in real time, retry failures, and forward incoming successful events to a local listener URL. Built with [ratatui](https://ratatui.rs), [reqwest](https://docs.rs/reqwest), [clap](https://docs.rs/clap), and tokio.
 
-![status](https://img.shields.io/badge/status-v0.7.4-blue)
+![status](https://img.shields.io/badge/status-v0.7.5-blue)
 [![release](https://github.com/getflute/flute-webhooks-cli/actions/workflows/release.yml/badge.svg)](https://github.com/getflute/flute-webhooks-cli/actions/workflows/release.yml)
 
 ## What it does
@@ -96,10 +96,30 @@ flute-webhooks --profile production auth login
 ### 2. Verify
 
 ```bash
+flute-webhooks auth status
+flute-webhooks --profile production --output json auth status
+```
+
+Shows the selected profile, API base URL, live authentication result, client ID, and merchant ID when available. Like `flute-cli`, it checks authentication with a read-only API ping using credentials from the environment or OS keychain. Missing credentials, rejected credentials, and failed network checks report `Authenticated: false`; the command still exits successfully. Unknown profiles and keychain errors fail the command. Each HTTP request has a 15-second timeout.
+
+With `--output json`, status returns a plain object with `profile`, `api_base_url`, `authenticated`, `client_id`, and `merchant_id`. Unknown IDs are `null`. Status does not print the client secret or bearer token.
+
+To print the bearer token for a `curl` smoke test:
+
+```bash
 flute-webhooks auth keys
 ```
 
 Prints the current bearer JWT (useful for `curl` smoke tests). `auth token` still works as a deprecated alias; new scripts should use `auth keys`.
+
+To log out, remove the saved credentials for the selected profile:
+
+```bash
+flute-webhooks auth logout
+flute-webhooks --profile production auth logout
+```
+
+Logout removes the profile's current and legacy entries from this application's OS keychain storage. It succeeds even if no credentials are saved and prints a text confirmation. Other profiles and `flute-cli` credentials are unaffected. If you use `FLUTE_CLIENT_ID` and `FLUTE_CLIENT_SECRET`, unset them in your shell too; environment credentials still take precedence. Logout does not revoke tokens already issued or end running sessions.
 
 ### 3. Use it
 
