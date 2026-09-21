@@ -63,6 +63,9 @@ pub fn run() -> anyhow::Result<()> {
         let dispatch_result = match cmd {
             cli::Command::Tui => tui::run(&profile, pending_tui_notice).await,
             cli::Command::Auth(cli::AuthCommand::Login) => auth_login(&profile).await,
+            cli::Command::Auth(cli::AuthCommand::Status) => {
+                cli::auth::status(&profile, output_fmt).await
+            }
             cli::Command::Auth(cli::AuthCommand::Logout) => auth_logout(&profile),
             cli::Command::Auth(cli::AuthCommand::Keys) => auth_print_keys(&profile).await,
             cli::Command::Listen { forward_to } => listen(&profile, &forward_to).await,

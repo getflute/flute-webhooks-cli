@@ -96,6 +96,17 @@ flute-webhooks --profile production auth login
 ### 2. Verify
 
 ```bash
+flute-webhooks auth status
+flute-webhooks --profile production --output json auth status
+```
+
+Shows the selected profile, API base URL, live authentication result, client ID, and merchant ID when available. Like `flute-cli`, it checks authentication with a read-only API ping using credentials from the environment or OS keychain. Missing credentials, rejected credentials, and failed network checks report `Authenticated: false`; the command still exits successfully. Unknown profiles and keychain errors fail the command. Each HTTP request has a 15-second timeout.
+
+With `--output json`, status returns a plain object with `profile`, `api_base_url`, `authenticated`, `client_id`, and `merchant_id`. Unknown IDs are `null`. Status does not print the client secret or bearer token.
+
+To print the bearer token for a `curl` smoke test:
+
+```bash
 flute-webhooks auth keys
 ```
 

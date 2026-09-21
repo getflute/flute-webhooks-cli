@@ -34,6 +34,7 @@ Every non-TUI subcommand accepts `--output json`. For `webhooks …` subcommands
 | `webhooks deliveries get <id>` | `DeliveryLogDetailDto` (full request + response bodies) |
 | `webhooks deliveries retry <id>` | `DeliveryLogDetailDto` — the same shape as `deliveries get`. HTTP 200. Represents the new delivery attempt's log record with full request + response bodies. |
 | `auth keys` | bearer JWT as a single line of text — useful for `curl` smoke tests, not JSON. `auth token` is a deprecated hidden alias that still works. |
+| `auth status` | Under `--output json`: plain `{profile, api_base_url, authenticated, client_id, merchant_id}` object (snake_case; no wrapper). Unknown IDs are `null`. Table output shows the same information, omitting an unknown merchant ID. |
 | `auth logout` | text confirmation that the selected profile's credentials were removed from the OS keychain (also under `--output json`); exit 0 even if already absent. Failures under `--output json` use the standard error envelope with `kind:"auth"`. |
 | `update` | text status line; exit 0 = up-to-date or updated successfully |
 
@@ -56,7 +57,7 @@ Field types are defined in [`src/api/models.rs`](src/api/models.rs).
 
 ### Wire-format casing
 
-Everything is camelCase. The v0.7.0 spec pass normalized field naming across surfaces, so most identifiers are now uniform:
+Webhook API data uses camelCase. The CLI-generated `auth status` object and error envelope use snake_case. The v0.7.0 spec pass normalized field naming across webhook surfaces, so most identifiers are now uniform:
 
 | Surface | Example fields |
 |---|---|
@@ -138,6 +139,7 @@ Branch on `kind` first, then `status` for retry/backoff decisions:
 
 | Subcommand | Safe to retry? | Notes |
 |---|---|---|
+| `auth status` | yes | Live read-only authentication check; missing credentials or an unsuccessful OAuth/ping request returns `authenticated:false` with exit 0. |
 | `auth logout` | yes | Deletes this app's current and legacy keychain entries for the selected profile; missing entries are success. |
 | `endpoints list` / `get` | yes | pure read |
 | `endpoints create` | **no** | duplicates create a second endpoint. Check `list` first if recovering from an ambiguous timeout. |
@@ -163,6 +165,8 @@ These env vars are checked by `auth::keychain::load_with_env_fallback` before th
 
 A bearer token is fetched automatically from `oauth_url` on demand, cached for the advertised TTL (minus a 60 s safety margin), and refreshed once on a 401. The agent does not see or need to handle tokens directly.
 
+Use `flute-webhooks --output json auth status` to inspect the selected profile and perform a live authenticated `GET /pay-int-api/ping`, matching `flute-cli`. `authenticated` is false when credentials are missing, rejected, or the network check fails; those outcomes exit 0, so branch on the field rather than the exit code. Each HTTP request has a 15-second timeout, and a ping HTTP 401 triggers one token refresh and retry. The server's `clientId` takes precedence over the stored/environment client ID, with the latter as fallback; `merchant_id` is populated from `merchantId` when available. Older successful ping responses without `authenticated` count as authenticated. Unknown profiles and keychain lookup failures still exit non-zero with `kind:"client"` and `kind:"auth"`, respectively. Status does not print secrets or bearer tokens.
+
 Use `flute-webhooks auth logout` (or `--profile production auth logout`) to remove saved keychain credentials for the selected profile. Other profiles and the sibling `flute-cli` keychain entries are unaffected. Environment variables are not cleared: unset `FLUTE_CLIENT_ID` and `FLUTE_CLIENT_SECRET` in the calling environment to stop using env-based authentication. Logout does not revoke issued tokens or end running sessions.
 
 ## Profiles and global flags
@@ -175,6 +179,7 @@ Use `flute-webhooks auth logout` (or `--profile production auth logout`) to remo
 
 | Intent | Command | Notes |
 |---|---|---|
+| "Am I authenticated?" | `auth status` | Live check; under `--output json`, inspect `authenticated` even when the command exits 0. |
 | "What webhook endpoints exist?" | `webhooks endpoints list` | Returns `{ items, pageInfo }`; iterate `items`. `pageInfo.hasMore == true` means an account with more than 100 endpoints. |
 | "Create a webhook for transaction events" | `webhooks endpoints create --url <URL> --events transaction.card.captured,transaction.card.refunded --name "<name>"` | **URL must be HTTPS.** `http://` (including `http://localhost` / `http://127.0.0.1`) is rejected server-side with `kind:"api"` + validation error. Use an HTTPS tunneling service (ngrok, cloudflared) for local development. |
 | "Pause this endpoint" | `webhooks endpoints update <id> --status inactive` | Wire field is `endpointStatus`; CLI flag is `--status`. |
