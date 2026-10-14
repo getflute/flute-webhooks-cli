@@ -2,6 +2,7 @@
 name = "flute-webhooks-cli"
 version = "0.7.5"
 edition = "2024"
+rust-version = "1.99"
 description = "Terminal UI and CLI for managing Flute webhook endpoints"
 repository = "https://github.com/getflute/flute-webhooks-cli"
 homepage = "https://github.com/getflute/flute-webhooks-cli"
