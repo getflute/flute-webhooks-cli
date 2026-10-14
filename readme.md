@@ -74,6 +74,8 @@ cargo build --release
 # Binary lands at target/release/flute-webhooks
 ```
 
+This builds with Rust 1.99.0, pinned in `rust-toolchain.toml`; rustup installs it automatically the first time.
+
 For development, `cargo build` (debug profile) is faster and works the same way. Source-built binaries do not carry an install receipt, so `flute-webhooks update` cannot self-replace them — it will check for a newer version and tell you to reinstall via one of the installers above.
 
 ## First run
