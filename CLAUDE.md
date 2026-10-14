@@ -14,7 +14,7 @@ cargo fmt                    # before any commit
 dist plan --output-format=json         # inspect the cargo-dist release matrix
 ```
 
-CI only runs on `v*` tag pushes (cargo-dist's `release.yml`). PRs get a cheap plan-only check; the full build matrix runs only on tag.
+CI (`.github/workflows/ci.yml`) runs `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` on every PR and push to `master`, using the Rust version pinned in `rust-toolchain.toml`. cargo-dist's `release.yml` gives PRs a cheap plan-only check; the full build matrix runs only on `v*` tag pushes.
 
 ## Conventions (already in force — don't undo them)
 
